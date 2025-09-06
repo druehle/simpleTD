@@ -212,7 +212,8 @@
     const tp = state.path.posAt(target.s);
     const angle = Math.atan2(tp.y - origin.y, tp.x - origin.x);
     const speed = 420;
-    state.projectiles.push({ x: origin.x, y: origin.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, dmg: type.damage, target });
+    // Store speed so we can re-aim (home) each frame toward the target
+    state.projectiles.push({ x: origin.x, y: origin.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, speed, dmg: type.damage, target });
   }
 
   // Rendering helpers
@@ -403,13 +404,14 @@
       }
     }
 
-    // projectiles
+    // projectiles (homing toward current target position)
     for (const p of state.projectiles) {
-      p.x += p.vx * dt; p.y += p.vy * dt;
       const tgt = p.target;
       if (tgt && tgt.alive) {
         const tp = state.path.posAt(tgt.s);
-        if (Math.hypot(p.x - tp.x, p.y - tp.y) <= 10) {
+        const dx = tp.x - p.x, dy = tp.y - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d <= 10) {
           tgt.hp -= p.dmg;
           p.dead = true;
           if (tgt.hp <= 0) {
@@ -417,6 +419,11 @@
             state.money += 5;
             updateHUD();
           }
+        } else {
+          const v = p.speed || 420;
+          const ux = dx / (d || 1), uy = dy / (d || 1);
+          p.vx = ux * v; p.vy = uy * v;
+          p.x += p.vx * dt; p.y += p.vy * dt;
         }
       } else {
         // lost target, fade out
@@ -489,4 +496,3 @@
     init();
   }
 })();
-
