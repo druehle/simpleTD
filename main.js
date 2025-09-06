@@ -118,28 +118,44 @@
   }
 
   function createDefaultPath() {
+    // Snake-like path: back-and-forth horizontal runs with two loops
     const P = [];
-    const margin = 70;
+    const top = 80;
+    const bottom = CANVAS_H - 80;
     const leftOut = -80;
     const rightOut = CANVAS_W + 80;
-    P.push({ x: leftOut, y: margin });
-    P.push({ x: 220, y: margin });
-    P.push({ x: 220, y: 260 });
-    P.push({ x: 520, y: 260 });
-    P.push({ x: 520, y: 120 });
-    P.push({ x: CANVAS_W - 140, y: 120 });
-    P.push({ x: CANVAS_W - 140, y: CANVAS_H - margin });
-    P.push({ x: rightOut, y: CANVAS_H - margin });
+    const left = 80;
+    const right = CANVAS_W - 80;
+
+    // Enter from left
+    P.push({ x: leftOut, y: top });
+    // First run to right
+    P.push({ x: right, y: top });
+    // Down a lane
+    P.push({ x: right, y: top + 120 });
+    // Back to left (loop 1)
+    P.push({ x: left, y: top + 120 });
+    // Down again
+    P.push({ x: left, y: top + 240 });
+    // To right (loop 2)
+    P.push({ x: right, y: top + 240 });
+    // Down near bottom
+    P.push({ x: right, y: bottom });
+    // Exit to right
+    P.push({ x: rightOut, y: bottom });
     return new Path(P);
   }
 
-  const WAVES = [
-    { count: 12, hp: 24, speed: 70, gap: 0.7 },
-    { count: 16, hp: 34, speed: 75, gap: 0.65 },
-    { count: 20, hp: 48, speed: 80, gap: 0.6 },
-    { count: 24, hp: 65, speed: 90, gap: 0.55 },
-    { count: 28, hp: 90, speed: 95, gap: 0.5 },
-  ];
+  // Infinite wave scaling function
+  function waveFor(index) {
+    const base = { count: 12, hp: 24, speed: 70, gap: 0.7 };
+    const n = index + 1; // 1-based
+    const hp = Math.round(base.hp * Math.pow(1.22, n - 1));
+    const count = Math.round(base.count + Math.min(40, (n - 1) * 2.5));
+    const speed = Math.min(140, base.speed + (n - 1) * 2.0);
+    const gap = Math.max(0.33, base.gap - (n - 1) * 0.02);
+    return { count, hp, speed, gap };
+  }
 
   // Drawing helpers
   function drawBackground() {
@@ -261,7 +277,7 @@
 
   function startWave() {
     if (state.inWave) return;
-    const w = WAVES[Math.min(state.waveIndex, WAVES.length - 1)];
+    const w = waveFor(state.waveIndex);
     state.spawnQueue = Array.from({ length: w.count }, () => ({ hp: w.hp, speed: w.speed }));
     state.spawnInterval = w.gap;
     state.spawnElapsed = 0;
@@ -506,4 +522,3 @@
     init();
   }
 })();
-
