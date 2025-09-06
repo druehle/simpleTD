@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Geometry TD</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="header">
+        <h1>Geometry TD</h1>
+        <div class="hud">
+          <div class="stat"><span>Money</span><strong id="money">0</strong></div>
+          <div class="stat"><span>Lives</span><strong id="lives">0</strong></div>
+          <div class="stat"><span>Wave</span><strong id="wave">0</strong></div>
+        </div>
+      </header>
+
+      <div class="controls">
+        <div class="tower-buttons">
+          <button id="select-square" class="btn square">Square (50)</button>
+          <button id="select-triangle" class="btn triangle">Triangle (60)</button>
+          <button id="select-hex" class="btn hex">Hexagon (80)</button>
+        </div>
+        <div class="wave-controls">
+          <button id="start-wave" class="btn start">Start Wave</button>
+          <span class="hint">Click on the field to place towers. Avoid the path.</span>
+        </div>
+      </div>
+
+      <div class="canvas-wrap">
+        <canvas id="game" width="960" height="540"></canvas>
+      </div>
+
+      <footer class="footer">
+        <small>All shapes, all strategy. Built with HTML5 Canvas.</small>
+      </footer>
+    </div>
+
+    <script src="main.js"></script>
+  </body>
+  </html>
+

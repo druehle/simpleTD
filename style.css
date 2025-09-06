@@ -1,0 +1,60 @@
+:root {
+  --bg: #0f1116;
+  --panel: #151a22;
+  --text: #e6edf3;
+  --muted: #9aa4b2;
+  --accent: #6ea8fe;
+  --green: #39d98a;
+  --pink: #ff7ab6;
+  --cyan: #4cd4ff;
+  --yellow: #ffd166;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  color: var(--text);
+  background: radial-gradient(1000px 600px at 50% 0%, #121725, var(--bg));
+}
+
+.wrap { max-width: 1000px; margin: 0 auto; padding: 16px; }
+
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 12px;
+}
+.header h1 { margin: 0; font-size: 20px; letter-spacing: 0.5px; color: var(--text); }
+
+.hud { display: flex; gap: 16px; background: var(--panel); border: 1px solid #202737; padding: 8px 10px; border-radius: 8px; }
+.stat { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.stat strong { color: var(--text); font-weight: 700; }
+
+.controls { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin: 8px 0 12px; }
+.tower-buttons { display: flex; gap: 8px; }
+.wave-controls { display: flex; align-items: center; gap: 10px; }
+.hint { color: var(--muted); }
+
+.btn {
+  appearance: none; border: 1px solid #263043; color: var(--text);
+  background: #1a2030; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, border 120ms ease;
+}
+.btn:hover { transform: translateY(-1px); border-color: #344055; background: #1d2436; }
+.btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+
+.btn.square { border-color: #2a6ac9; }
+.btn.triangle { border-color: #b14ba0; }
+.btn.hex { border-color: #3bb2e6; }
+.btn.start { border-color: var(--green); color: var(--green); }
+
+.canvas-wrap {
+  background: #0b0e14; border: 1px solid #1e2432; border-radius: 10px; padding: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25) inset;
+}
+
+canvas { display: block; width: 100%; height: auto; background: #0b0e14; border-radius: 6px; }
+
+.footer { color: var(--muted); margin-top: 12px; text-align: center; }
+
