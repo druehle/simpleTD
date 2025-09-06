@@ -19,18 +19,27 @@
 
       <div class="controls">
         <div class="tower-buttons">
-          <button id="select-square" class="btn square">Square (50)</button>
-          <button id="select-triangle" class="btn triangle">Triangle (60)</button>
-          <button id="select-hex" class="btn hex">Hexagon (80)</button>
+          <button id="select-basic" class="btn square">Place Tower (50)</button>
         </div>
         <div class="wave-controls">
           <button id="start-wave" class="btn start">Start Wave</button>
-          <span class="hint">Click on the field to place towers. Avoid the path.</span>
+          <span class="hint">Click field to place. Click a tower to upgrade.</span>
         </div>
       </div>
 
       <div class="canvas-wrap">
         <canvas id="game" width="960" height="540"></canvas>
+      </div>
+
+      <div id="upgrade-panel" class="panel">
+        <strong>Selected Tower</strong>
+        <div class="grid">
+          <div><span class="label">Level</span><span id="tower-level">-</span></div>
+          <div><span class="label">Damage</span><span id="tower-dmg">-</span></div>
+          <div><span class="label">Rate</span><span id="tower-rate">-</span></div>
+          <div><span class="label">Range</span><span id="tower-range">-</span></div>
+        </div>
+        <button id="upgrade-tower" class="btn upgrade" disabled>Upgrade (Cost <span id="upgrade-cost">-</span>)</button>
       </div>
 
       <footer class="footer">
@@ -41,4 +50,3 @@
     <script src="main.js"></script>
   </body>
   </html>
-

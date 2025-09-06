@@ -1,7 +1,6 @@
 "use strict";
 
-// Geometry TD - minimal HTML5 Canvas tower defense with geometric theme
-
+// Geometry TD (simplified) — single tower type + upgrades
 (function () {
   // Canvas setup
   const CANVAS_W = 960;
@@ -12,11 +11,18 @@
   const livesEl = document.getElementById("lives");
   const waveEl = document.getElementById("wave");
   const btnStart = document.getElementById("start-wave");
-  const btnSquare = document.getElementById("select-square");
-  const btnTriangle = document.getElementById("select-triangle");
-  const btnHex = document.getElementById("select-hex");
+  const btnBasic = document.getElementById("select-basic");
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
+
+  // Upgrade panel
+  const upPanel = document.getElementById("upgrade-panel");
+  const upBtn = document.getElementById("upgrade-tower");
+  const upLevel = document.getElementById("tower-level");
+  const upDmg = document.getElementById("tower-dmg");
+  const upRate = document.getElementById("tower-rate");
+  const upRange = document.getElementById("tower-range");
+  const upCostEl = document.getElementById("upgrade-cost");
 
   // Game state
   const state = {
@@ -34,46 +40,35 @@
     spawnInterval: 0,
     spawnElapsed: 0,
     mouse: { x: 0, y: 0, inside: false },
-    selectedType: "square",
+    selectedTool: "none", // or "place"
+    selectedTowerId: null,
   };
 
-  const TOWER_TYPES = {
-    square: {
-      name: "Square",
-      cost: 50,
-      range: 120,
-      damage: 15,
-      rate: 1.1, // shots/sec
-      color: "#3a86ff",
-      shape: "square",
-    },
-    triangle: {
-      name: "Triangle",
-      cost: 60,
-      range: 140,
-      damage: 8,
-      rate: 2.0,
-      color: "#ff006e",
-      shape: "triangle",
-    },
-    hex: {
-      name: "Hexagon",
-      cost: 80,
-      range: 170,
-      damage: 5,
-      rate: 3.0,
-      color: "#00bbf9",
-      shape: "hex",
-    },
+  // Single basic tower definition + upgrade scaling
+  const BASIC_TOWER = {
+    name: "Basic",
+    baseCost: 50,
+    color: "#3a86ff",
+    baseRange: 140,
+    baseDamage: 12,
+    baseRate: 1.6, // shots/sec
+    projectileSpeed: 500,
+    perLevel: { range: 12, damage: 6, rate: 0.18 },
+    maxLevel: 6,
+    upgradeCost(level) { // cost to go from current level -> next
+      return Math.round(60 * Math.pow(1.6, level - 1));
+    }
   };
 
-  const WAVES = [
-    { count: 12, hp: 24, speed: 70, gap: 0.7 },
-    { count: 16, hp: 34, speed: 75, gap: 0.65 },
-    { count: 20, hp: 48, speed: 80, gap: 0.6 },
-    { count: 24, hp: 65, speed: 90, gap: 0.55 },
-    { count: 28, hp: 90, speed: 95, gap: 0.5 },
-  ];
+  function towerStats(t) {
+    const lvl = t.level || 1;
+    return {
+      range: BASIC_TOWER.baseRange + BASIC_TOWER.perLevel.range * (lvl - 1),
+      damage: BASIC_TOWER.baseDamage + BASIC_TOWER.perLevel.damage * (lvl - 1),
+      rate: BASIC_TOWER.baseRate + BASIC_TOWER.perLevel.rate * (lvl - 1),
+      projectileSpeed: BASIC_TOWER.projectileSpeed
+    };
+  }
 
   // Utility
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -106,7 +101,6 @@
     posAt(s) {
       if (s <= 0) return { ...this.points[0] };
       if (s >= this.length) return { ...this.points[this.points.length - 1] };
-      // binary or linear search over segs; seg count is tiny, linear is fine
       for (let i = 0; i < this.segs.length; i++) {
         const seg = this.segs[i];
         if (s <= seg.acc + seg.len) {
@@ -118,18 +112,16 @@
     }
     minDistTo(x, y) {
       let d = Infinity;
-      for (const seg of this.segs) {
-        d = Math.min(d, pointSegDist(x, y, seg.a.x, seg.a.y, seg.b.x, seg.b.y));
-      }
+      for (const seg of this.segs) d = Math.min(d, pointSegDist(x, y, seg.a.x, seg.a.y, seg.b.x, seg.b.y));
       return d;
     }
   }
 
   function createDefaultPath() {
-    // Define a simple zig-zag path across the canvas
     const P = [];
-    const margin = 60;
-    const leftOut = -40, rightOut = CANVAS_W + 40;
+    const margin = 70;
+    const leftOut = -80;
+    const rightOut = CANVAS_W + 80;
     P.push({ x: leftOut, y: margin });
     P.push({ x: 220, y: margin });
     P.push({ x: 220, y: 260 });
@@ -141,82 +133,15 @@
     return new Path(P);
   }
 
-  function updateHUD() {
-    moneyEl.textContent = String(state.money);
-    livesEl.textContent = String(state.lives);
-    waveEl.textContent = String(state.waveIndex + 1);
-  }
+  const WAVES = [
+    { count: 12, hp: 24, speed: 70, gap: 0.7 },
+    { count: 16, hp: 34, speed: 75, gap: 0.65 },
+    { count: 20, hp: 48, speed: 80, gap: 0.6 },
+    { count: 24, hp: 65, speed: 90, gap: 0.55 },
+    { count: 28, hp: 90, speed: 95, gap: 0.5 },
+  ];
 
-  function worldFromEvent(e) {
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
-    return { x, y };
-  }
-
-  function canPlaceTower(pos, typeKey) {
-    const type = TOWER_TYPES[typeKey];
-    // Keep away from path and other towers
-    const minPath = 28; // cannot place within 28px of path
-    const minTower = 30; // spacing from other towers
-    if (pos.x < 20 || pos.x > CANVAS_W - 20 || pos.y < 20 || pos.y > CANVAS_H - 20) return false;
-    const dPath = state.path.minDistTo(pos.x, pos.y);
-    if (dPath < minPath) return false;
-    for (const t of state.towers) if (dist(pos, t) < minTower) return false;
-    return state.money >= type.cost;
-  }
-
-  function addTower(pos, typeKey) {
-    const type = TOWER_TYPES[typeKey];
-    if (!canPlaceTower(pos, typeKey)) return false;
-    state.money -= type.cost;
-    state.towers.push({ x: pos.x, y: pos.y, type: typeKey, cooldown: 0 });
-    updateHUD();
-    return true;
-  }
-
-  // Enemy factory
-  function spawnEnemy(hp, speed) {
-    state.enemies.push({ s: 0, hp, speed, r: 12, alive: true, color: "#ffd166" });
-  }
-
-  function startWave() {
-    if (state.inWave) return;
-    const w = WAVES[Math.min(state.waveIndex, WAVES.length - 1)];
-    state.spawnQueue = Array.from({ length: w.count }, () => ({ hp: w.hp, speed: w.speed }));
-    state.spawnInterval = w.gap;
-    state.spawnElapsed = 0;
-    state.inWave = true;
-    btnStart.disabled = true;
-  }
-
-  // Tower targeting: prefer enemy furthest along within range
-  function acquireTarget(tower) {
-    let best = null;
-    let bestS = -1;
-    const type = TOWER_TYPES[tower.type];
-    for (const e of state.enemies) {
-      if (!e.alive) continue;
-      const p = state.path.posAt(e.s);
-      const d = Math.hypot(tower.x - p.x, tower.y - p.y);
-      if (d <= type.range && e.s > bestS) {
-        best = e; bestS = e.s;
-      }
-    }
-    return best;
-  }
-
-  function shoot(tower, target) {
-    const type = TOWER_TYPES[tower.type];
-    const origin = { x: tower.x, y: tower.y };
-    const tp = state.path.posAt(target.s);
-    const angle = Math.atan2(tp.y - origin.y, tp.x - origin.x);
-    const speed = 420;
-    // Store speed so we can re-aim (home) each frame toward the target
-    state.projectiles.push({ x: origin.x, y: origin.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, speed, dmg: type.damage, target });
-  }
-
-  // Rendering helpers
+  // Drawing helpers
   function drawBackground() {
     // grid
     ctx.save();
@@ -261,55 +186,6 @@
     ctx.fill(); ctx.stroke();
     ctx.restore();
   }
-  function drawTriangle(x, y, size, color) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.fillStyle = color;
-    ctx.strokeStyle = "#0a0c12";
-    ctx.lineWidth = 2;
-    const r = size / 2;
-    ctx.beginPath();
-    for (let i = 0; i < 3; i++) {
-      const a = -Math.PI / 2 + i * (2 * Math.PI / 3);
-      const vx = Math.cos(a) * r, vy = Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
-    }
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.restore();
-  }
-  function drawHex(x, y, size, color) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.fillStyle = color;
-    ctx.strokeStyle = "#0a0c12";
-    ctx.lineWidth = 2;
-    const r = size / 2;
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const a = Math.PI / 6 + i * (2 * Math.PI / 6);
-      const vx = Math.cos(a) * r, vy = Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(vx, vy); else ctx.lineTo(vx, vy);
-    }
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawTowers() {
-    for (const t of state.towers) {
-      const type = TOWER_TYPES[t.type];
-      ctx.save();
-      // subtle base
-      ctx.globalAlpha = 0.07;
-      ctx.beginPath(); ctx.arc(t.x, t.y, type.range, 0, Math.PI * 2); ctx.fillStyle = type.color; ctx.fill();
-      ctx.globalAlpha = 1;
-      switch (type.shape) {
-        case "square": drawSquare(t.x, t.y, 24, type.color); break;
-        case "triangle": drawTriangle(t.x, t.y, 28, type.color); break;
-        case "hex": drawHex(t.x, t.y, 30, type.color); break;
-      }
-      ctx.restore();
-    }
-  }
 
   function drawEnemies() {
     ctx.save();
@@ -323,7 +199,7 @@
       ctx.fillStyle = grd;
       ctx.beginPath(); ctx.arc(p.x, p.y, e.r, 0, Math.PI * 2); ctx.fill();
       // tiny health arc
-      const hpRatio = clamp(e.hp / 100, 0, 1);
+      const hpRatio = clamp(e.hp / e.maxHp, 0, 1);
       ctx.strokeStyle = "#222a3a"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, e.r + 6, 0, Math.PI * 2); ctx.stroke();
       ctx.strokeStyle = "#8bd9a3"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, e.r + 6, -Math.PI/2, -Math.PI/2 + hpRatio * Math.PI * 2); ctx.stroke();
     }
@@ -339,22 +215,83 @@
     ctx.restore();
   }
 
+  function drawTowers() {
+    for (const t of state.towers) {
+      const s = towerStats(t);
+      const selected = (t.id === state.selectedTowerId);
+      ctx.save();
+      // subtle range disc
+      ctx.globalAlpha = 0.07;
+      ctx.beginPath(); ctx.arc(t.x, t.y, s.range, 0, Math.PI * 2); ctx.fillStyle = BASIC_TOWER.color; ctx.fill();
+      ctx.globalAlpha = 1;
+      // body
+      drawSquare(t.x, t.y, 24, BASIC_TOWER.color);
+      // level pips
+      ctx.fillStyle = "#a0b8ff";
+      for (let i = 0; i < t.level; i++) {
+        ctx.beginPath(); ctx.arc(t.x - 10 + i * 5, t.y + 12, 2, 0, Math.PI * 2); ctx.fill();
+      }
+      // selection ring
+      if (selected) {
+        ctx.strokeStyle = "#8bd9a3"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(t.x, t.y, 18, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
   function drawPlacementPreview() {
     if (!state.mouse.inside) return;
+    if (state.selectedTool !== "place") return;
     const pos = state.mouse;
-    const ok = canPlaceTower(pos, state.selectedType);
-    const type = TOWER_TYPES[state.selectedType];
+    const ok = canPlaceTower(pos);
+    const s = towerStats({ level: 1 });
     ctx.save();
     ctx.globalAlpha = 0.2;
-    ctx.beginPath(); ctx.arc(pos.x, pos.y, type.range, 0, Math.PI * 2); ctx.fillStyle = ok ? type.color : "#ef4444"; ctx.fill();
+    ctx.beginPath(); ctx.arc(pos.x, pos.y, s.range, 0, Math.PI * 2); ctx.fillStyle = ok ? BASIC_TOWER.color : "#ef4444"; ctx.fill();
     ctx.globalAlpha = 1;
-    const c = ok ? type.color : "#ef4444";
-    switch (type.shape) {
-      case "square": drawSquare(pos.x, pos.y, 24, c); break;
-      case "triangle": drawTriangle(pos.x, pos.y, 28, c); break;
-      case "hex": drawHex(pos.x, pos.y, 30, c); break;
-    }
+    const c = ok ? BASIC_TOWER.color : "#ef4444";
+    drawSquare(pos.x, pos.y, 24, c);
     ctx.restore();
+  }
+
+  // Enemy factory
+  function spawnEnemy(hp, speed) {
+    state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 12, alive: true, color: "#ffd166" });
+  }
+
+  function startWave() {
+    if (state.inWave) return;
+    const w = WAVES[Math.min(state.waveIndex, WAVES.length - 1)];
+    state.spawnQueue = Array.from({ length: w.count }, () => ({ hp: w.hp, speed: w.speed }));
+    state.spawnInterval = w.gap;
+    state.spawnElapsed = 0;
+    state.inWave = true;
+    btnStart.disabled = true;
+  }
+
+  // Tower targeting: prefer enemy furthest along within range
+  function acquireTarget(tower) {
+    let best = null;
+    let bestS = -1;
+    const s = towerStats(tower);
+    for (const e of state.enemies) {
+      if (!e.alive) continue;
+      const p = state.path.posAt(e.s);
+      const d = Math.hypot(tower.x - p.x, tower.y - p.y);
+      if (d <= s.range && e.s > bestS) {
+        best = e; bestS = e.s;
+      }
+    }
+    return best;
+  }
+
+  function shoot(tower, target) {
+    const stats = towerStats(tower);
+    const origin = { x: tower.x, y: tower.y };
+    const tp = state.path.posAt(target.s);
+    const angle = Math.atan2(tp.y - origin.y, tp.x - origin.x);
+    const speed = stats.projectileSpeed;
+    state.projectiles.push({ x: origin.x, y: origin.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, speed, dmg: stats.damage, target });
   }
 
   // Update loop
@@ -393,13 +330,13 @@
 
     // towers fire
     for (const t of state.towers) {
-      const type = TOWER_TYPES[t.type];
+      const stats = towerStats(t);
       t.cooldown -= dt;
       if (t.cooldown <= 0) {
         const target = acquireTarget(t);
         if (target) {
           shoot(t, target);
-          t.cooldown = 1 / type.rate;
+          t.cooldown = 1 / stats.rate;
         }
       }
     }
@@ -445,22 +382,63 @@
     drawPlacementPreview();
   }
 
-  function loop(ts) {
-    if (!state.lastTs) state.lastTs = ts;
-    let dt = (ts - state.lastTs) / 1000;
-    // clamp dt to avoid huge steps if tab was suspended
-    dt = Math.min(dt, 0.05);
-    state.lastTs = ts;
-    update(dt);
-    render();
-    if (state.lives > 0) requestAnimationFrame(loop);
+  function updateHUD() {
+    moneyEl.textContent = String(state.money);
+    livesEl.textContent = String(state.lives);
+    waveEl.textContent = String(state.waveIndex + 1);
+    const t = state.towers.find(x => x.id === state.selectedTowerId) || null;
+    if (!t) {
+      upPanel.style.opacity = 0.6;
+      upLevel.textContent = upDmg.textContent = upRate.textContent = upRange.textContent = "-";
+      upCostEl.textContent = "-";
+      upBtn.disabled = true;
+    } else {
+      const s = towerStats(t);
+      upPanel.style.opacity = 1;
+      upLevel.textContent = String(t.level);
+      upDmg.textContent = String(Math.round(s.damage));
+      upRate.textContent = String(s.rate.toFixed(2));
+      upRange.textContent = String(Math.round(s.range));
+      if (t.level >= BASIC_TOWER.maxLevel) {
+        upCostEl.textContent = "MAX";
+        upBtn.disabled = true;
+      } else {
+        const cost = BASIC_TOWER.upgradeCost(t.level);
+        upCostEl.textContent = String(cost);
+        upBtn.disabled = state.money < cost;
+      }
+    }
   }
 
-  function setSelected(type) {
-    state.selectedType = type;
-    btnSquare.classList.toggle("active", type === "square");
-    btnTriangle.classList.toggle("active", type === "triangle");
-    btnHex.classList.toggle("active", type === "hex");
+  function worldFromEvent(e) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+    return { x, y };
+  }
+
+  function canPlaceTower(pos) {
+    const minPath = 28; // cannot place within 28px of path
+    const minTower = 30; // spacing from other towers
+    if (pos.x < 20 || pos.x > CANVAS_W - 20 || pos.y < 20 || pos.y > CANVAS_H - 20) return false;
+    const dPath = state.path.minDistTo(pos.x, pos.y);
+    if (dPath < minPath) return false;
+    for (const t of state.towers) if (dist(pos, t) < minTower) return false;
+    return state.money >= BASIC_TOWER.baseCost;
+  }
+
+  let nextTowerId = 1;
+  function addTower(pos) {
+    if (!canPlaceTower(pos)) return false;
+    state.money -= BASIC_TOWER.baseCost;
+    state.towers.push({ id: nextTowerId++, x: pos.x, y: pos.y, level: 1, cooldown: 0 });
+    updateHUD();
+    return true;
+  }
+
+  function setPlacementActive(active) {
+    state.selectedTool = active ? "place" : "none";
+    btnBasic.classList.toggle("active", active);
   }
 
   function attachEvents() {
@@ -471,28 +449,61 @@
     });
     canvas.addEventListener("click", (e) => {
       const pos = worldFromEvent(e);
-      addTower(pos, state.selectedType);
+      // First: try selecting a tower
+      const hit = state.towers.find(t => Math.hypot(t.x - pos.x, t.y - pos.y) <= 18);
+      if (hit) {
+        state.selectedTowerId = hit.id;
+        updateHUD();
+        return;
+      }
+      // Otherwise place if placement active
+      if (state.selectedTool === "place") {
+        if (addTower(pos)) {
+          // keep placement mode active
+        }
+      } else {
+        // clear selection when clicking empty
+        state.selectedTowerId = null;
+        updateHUD();
+      }
     });
     btnStart.addEventListener("click", startWave);
-    btnSquare.addEventListener("click", () => setSelected("square"));
-    btnTriangle.addEventListener("click", () => setSelected("triangle"));
-    btnHex.addEventListener("click", () => setSelected("hex"));
+    btnBasic.addEventListener("click", () => setPlacementActive(state.selectedTool !== "place"));
+    upBtn.addEventListener("click", () => {
+      const t = state.towers.find(x => x.id === state.selectedTowerId);
+      if (!t) return;
+      if (t.level >= BASIC_TOWER.maxLevel) return;
+      const cost = BASIC_TOWER.upgradeCost(t.level);
+      if (state.money < cost) return;
+      state.money -= cost;
+      t.level += 1;
+      updateHUD();
+    });
+  }
+
+  function loop(ts) {
+    if (!state.lastTs) state.lastTs = ts;
+    let dt = (ts - state.lastTs) / 1000;
+    dt = Math.min(dt, 0.05); // clamp dt to avoid huge steps
+    state.lastTs = ts;
+    update(dt);
+    render();
+    if (state.lives > 0) requestAnimationFrame(loop);
   }
 
   function init() {
-    // Fixed-size canvas: ensure backing store matches attributes
     canvas.width = CANVAS_W; canvas.height = CANVAS_H;
     state.path = createDefaultPath();
-    setSelected("square");
+    setPlacementActive(false);
     updateHUD();
     attachEvents();
     requestAnimationFrame(loop);
   }
 
-  // Initialize after DOM is ready
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
   } else {
     init();
   }
 })();
+

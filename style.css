@@ -58,3 +58,17 @@ canvas { display: block; width: 100%; height: auto; background: #0b0e14; border-
 
 .footer { color: var(--muted); margin-top: 12px; text-align: center; }
 
+/* Upgrade panel */
+#upgrade-panel {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+.panel {
+  background: var(--panel); border: 1px solid #202737; padding: 10px; border-radius: 8px;
+}
+#upgrade-panel .grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px;
+}
+#upgrade-panel .label { color: var(--muted); display: block; }
+.btn.upgrade { border-color: var(--accent); color: var(--accent); justify-self: start; }
