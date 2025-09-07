@@ -42,6 +42,7 @@
     mouse: { x: 0, y: 0, inside: false },
     selectedTool: "none", // or "place"
     selectedTowerId: null,
+    drag: { active: false, type: null, overCanvas: false },
   };
 
   // Single basic tower definition + upgrade scaling
@@ -146,6 +147,47 @@
     return new Path(P);
   }
 
+  // --- Hex helpers ---
+  const HEX_R = 22; // hex tile radius for background grid
+  const SQRT3 = Math.sqrt(3);
+  function hexPath(x, y, r, flatTop = true) {
+    const p = new Path2D();
+    for (let i = 0; i < 6; i++) {
+      const angle = (Math.PI / 3) * i + (flatTop ? Math.PI / 6 : 0);
+      const px = x + r * Math.cos(angle);
+      const py = y + r * Math.sin(angle);
+      if (i === 0) p.moveTo(px, py); else p.lineTo(px, py);
+    }
+    p.closePath();
+    return p;
+  }
+
+  function drawHex(x, y, r, fillStyle, strokeStyle = "#0a0c12", lineWidth = 2) {
+    const p = hexPath(x, y, r, true);
+    if (fillStyle) { ctx.fillStyle = fillStyle; ctx.fill(p); }
+    if (strokeStyle && lineWidth > 0) { ctx.strokeStyle = strokeStyle; ctx.lineWidth = lineWidth; ctx.stroke(p); }
+  }
+
+  function drawHexGrid() {
+    // flat-top hex grid covering the canvas
+    ctx.save();
+    const r = HEX_R;
+    const w = 2 * r;
+    const h = SQRT3 * r;
+    const dx = 1.5 * r; // horizontal center spacing
+    const dy = h;       // vertical center spacing
+    for (let row = -1, y = -h; y < CANVAS_H + h; row++, y += dy) {
+      const offset = (row % 2 !== 0) ? dx : 0;
+      for (let x = -w + offset; x < CANVAS_W + w; x += 3 * r) {
+        const p = hexPath(x, y, r, true);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "#111827";
+        ctx.stroke(p);
+      }
+    }
+    ctx.restore();
+  }
+
   // Infinite wave scaling function
   function waveFor(index) {
     const base = { count: 12, hp: 24, speed: 70, gap: 0.7 };
@@ -159,18 +201,8 @@
 
   // Drawing helpers
   function drawBackground() {
-    // grid
-    ctx.save();
-    ctx.lineWidth = 1;
-    const step = 30;
-    ctx.strokeStyle = "#111827";
-    for (let x = 0; x <= CANVAS_W; x += step) {
-      ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, CANVAS_H); ctx.stroke();
-    }
-    for (let y = 0; y <= CANVAS_H; y += step) {
-      ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(CANVAS_W, y + 0.5); ctx.stroke();
-    }
-    ctx.restore();
+    // hex grid background
+    drawHexGrid();
   }
 
   function drawPath() {
@@ -208,16 +240,17 @@
     for (const e of state.enemies) {
       if (!e.alive) continue;
       const p = state.path.posAt(e.s);
-      // body
-      const grd = ctx.createRadialGradient(p.x - 4, p.y - 4, 2, p.x, p.y, e.r + 3);
-      grd.addColorStop(0, "#ffe29a");
-      grd.addColorStop(1, e.color);
-      ctx.fillStyle = grd;
-      ctx.beginPath(); ctx.arc(p.x, p.y, e.r, 0, Math.PI * 2); ctx.fill();
-      // tiny health arc
-      const hpRatio = clamp(e.hp / e.maxHp, 0, 1);
-      ctx.strokeStyle = "#222a3a"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, e.r + 6, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = "#8bd9a3"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, e.r + 6, -Math.PI/2, -Math.PI/2 + hpRatio * Math.PI * 2); ctx.stroke();
+      // body as hex, color encodes hardness
+      drawHex(p.x, p.y, e.r, e.color, "#0a0c12", 2);
+      // HP text centered on unit
+      ctx.font = "12px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const hpText = String(Math.max(0, Math.ceil(e.hp)));
+      ctx.lineWidth = 3; ctx.strokeStyle = "#0a0c12";
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeText(hpText, p.x, p.y + 1);
+      ctx.fillText(hpText, p.x, p.y + 1);
     }
     ctx.restore();
   }
@@ -256,8 +289,9 @@
   }
 
   function drawPlacementPreview() {
-    if (!state.mouse.inside) return;
-    if (state.selectedTool !== "place") return;
+    const show = (state.selectedTool === "place") || state.drag.active;
+    if (!(state.mouse.inside || state.drag.overCanvas)) return;
+    if (!show) return;
     const pos = state.mouse;
     const ok = canPlaceTower(pos);
     const s = towerStats({ level: 1 });
@@ -271,8 +305,16 @@
   }
 
   // Enemy factory
+  function colorForHardness(hp) {
+    if (hp < 50) return "#8bd9a3";       // easy - green
+    if (hp < 110) return "#ffd166";      // normal - yellow
+    if (hp < 180) return "#f4a261";      // tough - orange
+    if (hp < 280) return "#ef4444";      // hard - red
+    return "#8b5cf6";                    // elite - purple
+  }
   function spawnEnemy(hp, speed) {
-    state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 12, alive: true, color: "#ffd166" });
+    const color = colorForHardness(hp);
+    state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 14, alive: true, color });
   }
 
   function startWave() {
@@ -459,9 +501,10 @@
 
   function attachEvents() {
     canvas.addEventListener("mouseenter", () => state.mouse.inside = true);
-    canvas.addEventListener("mouseleave", () => state.mouse.inside = false);
+    canvas.addEventListener("mouseleave", () => { state.mouse.inside = false; state.drag.overCanvas = false; });
     canvas.addEventListener("mousemove", (e) => {
       const p = worldFromEvent(e); state.mouse.x = p.x; state.mouse.y = p.y;
+      if (state.drag.active) state.drag.overCanvas = true;
     });
     canvas.addEventListener("click", (e) => {
       const pos = worldFromEvent(e);
@@ -472,19 +515,49 @@
         updateHUD();
         return;
       }
-      // Otherwise place if placement active
-      if (state.selectedTool === "place") {
-        if (addTower(pos)) {
-          // keep placement mode active
-        }
-      } else {
-        // clear selection when clicking empty
-        state.selectedTowerId = null;
-        updateHUD();
-      }
+      // clear selection when clicking empty
+      state.selectedTowerId = null;
+      updateHUD();
     });
     btnStart.addEventListener("click", startWave);
-    btnBasic.addEventListener("click", () => setPlacementActive(state.selectedTool !== "place"));
+    // Drag-to-place from top button
+    const beginDrag = (clientX, clientY) => {
+      state.drag.active = true;
+      state.drag.type = "basic";
+      state.drag.overCanvas = false;
+      const rect = canvas.getBoundingClientRect();
+      state.mouse.x = (clientX - rect.left) * (canvas.width / rect.width);
+      state.mouse.y = (clientY - rect.top) * (canvas.height / rect.height);
+    };
+    const endDrag = () => {
+      if (!state.drag.active) return;
+      if (state.drag.overCanvas) {
+        const pos = { x: state.mouse.x, y: state.mouse.y };
+        if (canPlaceTower(pos)) addTower(pos);
+      }
+      state.drag.active = false;
+      state.drag.type = null;
+      state.drag.overCanvas = false;
+    };
+    btnBasic.addEventListener("mousedown", (e) => { e.preventDefault(); beginDrag(e.clientX, e.clientY); });
+    btnBasic.addEventListener("touchstart", (e) => { const t = e.touches[0]; if (!t) return; e.preventDefault(); beginDrag(t.clientX, t.clientY); }, { passive: false });
+    document.addEventListener("mouseup", endDrag);
+    document.addEventListener("touchend", endDrag);
+    document.addEventListener("mousemove", (e) => {
+      if (!state.drag.active) return;
+      const rect = canvas.getBoundingClientRect();
+      state.mouse.x = (e.clientX - rect.left) * (canvas.width / rect.width);
+      state.mouse.y = (e.clientY - rect.top) * (canvas.height / rect.height);
+      state.drag.overCanvas = (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom);
+    });
+    document.addEventListener("touchmove", (e) => {
+      if (!state.drag.active) return;
+      const t = e.touches[0]; if (!t) return; e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      state.mouse.x = (t.clientX - rect.left) * (canvas.width / rect.width);
+      state.mouse.y = (t.clientY - rect.top) * (canvas.height / rect.height);
+      state.drag.overCanvas = (t.clientX >= rect.left && t.clientX <= rect.right && t.clientY >= rect.top && t.clientY <= rect.bottom);
+    }, { passive: false });
     upBtn.addEventListener("click", () => {
       const t = state.towers.find(x => x.id === state.selectedTowerId);
       if (!t) return;
