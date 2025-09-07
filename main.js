@@ -781,28 +781,16 @@
     for (const t of state.towers) {
       const stats = towerStats(t);
       if (t.type === "laser") {
-        // Continuous DPS along a beam line toward the farthest target in range
-        const target = acquireFirstSpawned(t);
+        // Original laser behavior: lock farthest-in-range target, deal DPS to that target,
+        // and draw beam directly to the target position.
+        const target = acquireTarget(t);
         if (target) {
           const tp = state.path.posAt(target.s);
-          const dx = tp.x - t.x, dy = tp.y - t.y;
-          const dist = Math.hypot(dx, dy) || 1;
-          const ux = dx / dist, uy = dy / dist;
-          const endX = t.x + ux * (stats.range * 2);
-          const endY = t.y + uy * (stats.range * 2);
-          // record beam for drawing (2x range)
-          state.laserBeams.push({ x1: t.x, y1: t.y, x2: endX, y2: endY, color: "#fecaca" });
-          // damage any enemy the beam intersects
-          const thickness = 10; // base beam half-width (visual thickness aligned)
-          for (const e of state.enemies) {
-            if (!e.alive) continue;
-            const ep = state.path.posAt(e.s);
-            const dline = pointSegDist(ep.x, ep.y, t.x, t.y, endX, endY);
-            if (dline <= thickness + (e.r || 0)) {
-              e.hp -= damageAfterArmor(stats.damage * dt, "laser", e);
-              if (e.hp <= 0) { e.alive = false; giveKillReward(e); }
-            }
-          }
+          // record beam for drawing (to target)
+          state.laserBeams.push({ x1: t.x, y1: t.y, x2: tp.x, y2: tp.y, color: "#fecaca" });
+          // apply DPS to target only
+          target.hp -= damageAfterArmor(stats.damage * dt, "laser", target);
+          if (target.hp <= 0) { target.alive = false; giveKillReward(target); }
         }
         continue;
       }
