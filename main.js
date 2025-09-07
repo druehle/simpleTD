@@ -133,7 +133,12 @@
   function upgradeCostFor(t) {
     const cfg = getTowerCfg(t.type);
     const lvl = t.level || 1;
-    if (lvl >= (cfg.maxLevel || 6)) return 1000; // flat cost beyond level 6
+    const cap = cfg.maxLevel || 6;
+    if (lvl >= cap) {
+      // Doubling cost for each level above cap (e.g., 6->7: 1000, 7->8: 2000, 8->9: 4000)
+      const over = lvl - cap; // 0 for level 6, 1 for level 7, etc.
+      return 1000 * Math.pow(2, over);
+    }
     return cfg.upgradeCost(lvl);
   }
 
@@ -185,33 +190,31 @@
   }
 
   function createDefaultPath() {
-    // Snake-like path with dynamic lanes to fit current height
+    // Random meandering path between left and right edges
     const P = [];
-    const top = 80;
-    const bottom = CANVAS_H - 80;
+    const marginX = 80, marginY = 70;
     const leftOut = -80;
     const rightOut = CANVAS_W + 80;
-    const left = 80;
-    const right = CANVAS_W - 80;
-    const span = Math.max(60, bottom - top);
-    const lane = Math.min(120, Math.max(40, Math.floor(span / 3)));
-
-    // Enter from left
-    P.push({ x: leftOut, y: top });
-    // First run to right
-    P.push({ x: right, y: top });
-    // Down a lane
-    P.push({ x: right, y: top + lane });
-    // Back to left (loop 1)
-    P.push({ x: left, y: top + lane });
-    // Down again
-    P.push({ x: left, y: top + lane * 2 });
-    // To right (loop 2)
-    P.push({ x: right, y: top + lane * 2 });
-    // Down near bottom
-    P.push({ x: right, y: bottom });
-    // Exit to right
-    P.push({ x: rightOut, y: bottom });
+    const left = marginX;
+    const right = CANVAS_W - marginX;
+    let y = randInt(marginY, CANVAS_H - marginY);
+    P.push({ x: leftOut, y });
+    let dir = 1; // 1 -> to right, -1 -> to left
+    const lanes = Math.max(3, Math.min(8, Math.round(CANVAS_H / 80)));
+    for (let i = 0; i < lanes; i++) {
+      const xSide = dir > 0 ? right : left;
+      P.push({ x: xSide, y });
+      if (i < lanes - 1) {
+        let step = randInt(80, 140) * (Math.random() < 0.5 ? -1 : 1);
+        let ny = y + step;
+        if (ny < marginY) ny = marginY;
+        if (ny > CANVAS_H - marginY) ny = CANVAS_H - marginY;
+        P.push({ x: xSide, y: ny });
+        y = ny;
+        dir *= -1;
+      }
+    }
+    P.push({ x: rightOut, y });
     return new Path(P);
   }
 
@@ -614,6 +617,7 @@
 
   function startWave() {
     if (state.inWave) return;
+    if (state.waveIndex >= MAX_WAVES) { if (modalWin) modalWin.classList.remove("hidden"); return; }
     const w = waveFor(state.waveIndex);
     // Base queue all normals
     state.spawnQueue = Array.from({ length: w.count }, () => ({ hp: w.hp, speed: w.speed, type: "normal" }));
@@ -675,6 +679,7 @@
     state.path = createDefaultPath();
     updateHUD();
     hideGameOver();
+    if (modalWin) modalWin.classList.add("hidden");
     // Kick loop again if it stopped
     requestAnimationFrame(loop);
   }
@@ -750,13 +755,15 @@
         state.overlay.earned = reward;
         state.overlay.bonus = bonus;
         state.overlay.completedWave = completedWave;
-        if (state.autoWave) {
-          state.nextWaveTimer = 5; // seconds until next wave
-        } else {
-          state.nextWaveTimer = 0;
-        }
         // advance to next wave index for upcoming start
         state.waveIndex++;
+        if (state.waveIndex >= MAX_WAVES) {
+          state.nextWaveTimer = 0;
+          btnStart.disabled = true;
+          if (modalWin) modalWin.classList.remove("hidden");
+        } else {
+          state.nextWaveTimer = state.autoWave ? 5 : 0;
+        }
         updateHUD();
       }
     }
@@ -987,8 +994,9 @@
         state.turbo = !!turboCb.checked;
       });
     }
-    // New game button
+    // New game buttons
     if (btnNewGame) btnNewGame.addEventListener("click", resetGame);
+    if (btnNewMap) btnNewMap.addEventListener("click", resetGame);
     // Drag-to-place from top button
     const beginDrag = (clientX, clientY) => {
       state.drag.active = true;
