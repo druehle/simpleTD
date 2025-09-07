@@ -91,21 +91,19 @@
 
   function getTowerCfg(type) { return type === "bomber" ? BOMBER_TOWER : BASIC_TOWER; }
 
+  const MAX_UPGRADES = 5; // base level 1 + 5 upgrades -> cap at level 6
+  const MAX_LEVEL = 1 + MAX_UPGRADES;
   function towerStats(t) {
     const cfg = getTowerCfg(t.type);
-    const lvl = t.level || 1;
-    const baseDamage = cfg.baseDamage + (cfg.perLevel.damage || 0) * (lvl - 1);
-    // Overlevel scaling: above maxLevel, make damage explode (very strong)
-    const over = Math.max(0, lvl - (cfg.maxLevel || 6));
-    const dmg = over > 0 ? Math.round(baseDamage * Math.pow(2.5, over)) : baseDamage;
+    const lvlRaw = t.level || 1;
+    const lvl = Math.min(lvlRaw, MAX_LEVEL);
     const s = {
       range: cfg.baseRange + (cfg.perLevel.range || 0) * (lvl - 1),
-      damage: dmg,
+      damage: cfg.baseDamage + (cfg.perLevel.damage || 0) * (lvl - 1),
       rate: cfg.baseRate + (cfg.perLevel.rate || 0) * (lvl - 1),
       projectileSpeed: cfg.projectileSpeed,
     };
-    // Laser towers have double effective range
-    if (t.type === "laser") s.range *= 2;
+    if (t.type === "laser") s.range *= 2; // keep laser double range behavior
     s.splash = (cfg.baseSplash || 0) + ((cfg.perLevel.splash || 0) * (lvl - 1));
     return s;
   }
@@ -133,12 +131,9 @@
   function upgradeCostFor(t) {
     const cfg = getTowerCfg(t.type);
     const lvl = t.level || 1;
-    const cap = cfg.maxLevel || 6;
-    if (lvl >= cap) {
-      // Doubling cost for each level above cap (e.g., 6->7: 1000, 7->8: 2000, 8->9: 4000)
-      const over = lvl - cap; // 0 for level 6, 1 for level 7, etc.
-      return 1000 * Math.pow(2, over);
-    }
+    if (lvl >= MAX_LEVEL) return null; // capped
+    // upgrades: 1->2,2->3,3->4,4->5 use cfg.upgradeCost; 5->6 costs 1000
+    if (lvl === MAX_LEVEL - 1) return 1000;
     return cfg.upgradeCost(lvl);
   }
 
@@ -190,88 +185,34 @@
   }
 
   function createDefaultPath() {
-    // Four preset zig-zag maps; choose one at random each game/reset
-    const margin = 70;
+    // Snake-like path with dynamic lanes to fit current height
+    const P = [];
+    const top = 80;
+    const bottom = CANVAS_H - 80;
     const leftOut = -80;
     const rightOut = CANVAS_W + 80;
-    const left = margin;
-    const right = CANVAS_W - margin;
-    const top = margin;
-    const bottom = CANVAS_H - margin;
+    const left = 80;
+    const right = CANVAS_W - 80;
+    const span = Math.max(60, bottom - top);
+    const lane = Math.min(120, Math.max(40, Math.floor(span / 3)));
 
-    function mapA() {
-      // Classic horizontal snake with 3 lanes
-      const P = [];
-      const lane = Math.max(60, Math.min(140, Math.floor((bottom - top) / 3)));
-      P.push({ x: leftOut, y: top });
-      P.push({ x: right, y: top });
-      P.push({ x: right, y: top + lane });
-      P.push({ x: left, y: top + lane });
-      P.push({ x: left, y: top + lane * 2 });
-      P.push({ x: right, y: top + lane * 2 });
-      P.push({ x: right, y: bottom });
-      P.push({ x: rightOut, y: bottom });
-      return P;
-    }
-
-    function mapB() {
-      // Start higher, more lanes and tighter zig-zag
-      const P = [];
-      const lanes = 4;
-      const step = Math.max(50, Math.floor((bottom - top) / (lanes + 1)));
-      let y = top + Math.floor(step / 2);
-      P.push({ x: leftOut, y });
-      let dir = 1;
-      for (let i = 0; i < lanes; i++) {
-        const xSide = dir > 0 ? right : left;
-        P.push({ x: xSide, y });
-        y += step;
-        P.push({ x: xSide, y });
-        dir *= -1;
-      }
-      P.push({ x: right, y });
-      P.push({ x: rightOut, y });
-      return P;
-    }
-
-    function mapC() {
-      // Long first run, then short tight zig
-      const P = [];
-      const midY = Math.floor((top + bottom) / 2);
-      const tight = 60;
-      P.push({ x: leftOut, y: midY });
-      P.push({ x: right, y: midY });
-      P.push({ x: right, y: midY + tight });
-      P.push({ x: left, y: midY + tight });
-      P.push({ x: left, y: midY + tight * 2 });
-      P.push({ x: right, y: midY + tight * 2 });
-      P.push({ x: rightOut, y: midY + tight * 2 });
-      return P;
-    }
-
-    function mapD() {
-      // Start low, climb up with zig-zags
-      const P = [];
-      const lanes = 3;
-      const step = Math.max(60, Math.floor((bottom - top) / (lanes + 1)));
-      let y = bottom - Math.floor(step / 2);
-      P.push({ x: leftOut, y });
-      let dir = 1;
-      for (let i = 0; i < lanes; i++) {
-        const xSide = dir > 0 ? right : left;
-        P.push({ x: xSide, y });
-        y -= step;
-        P.push({ x: xSide, y });
-        dir *= -1;
-      }
-      P.push({ x: right, y });
-      P.push({ x: rightOut, y });
-      return P;
-    }
-
-    const choices = [mapA, mapB, mapC, mapD];
-    const idx = Math.floor(Math.random() * choices.length);
-    return new Path(choices[idx]());
+    // Enter from left
+    P.push({ x: leftOut, y: top });
+    // First run to right
+    P.push({ x: right, y: top });
+    // Down a lane
+    P.push({ x: right, y: top + lane });
+    // Back to left (loop 1)
+    P.push({ x: left, y: top + lane });
+    // Down again
+    P.push({ x: left, y: top + lane * 2 });
+    // To right (loop 2)
+    P.push({ x: right, y: top + lane * 2 });
+    // Down near bottom
+    P.push({ x: right, y: bottom });
+    // Exit to right
+    P.push({ x: rightOut, y: bottom });
+    return new Path(P);
   }
 
   // --- Hex helpers ---
@@ -965,9 +906,14 @@
       upDmg.textContent = String(Math.round(s.damage));
       upRate.textContent = String(s.rate.toFixed(2));
       upRange.textContent = String(Math.round(s.range));
-      const cost = upgradeCostFor(t);
-      upCostEl.textContent = String(cost);
-      upBtn.disabled = state.money < cost;
+      if (t.level >= MAX_LEVEL) {
+        upCostEl.textContent = "MAX";
+        upBtn.disabled = true;
+      } else {
+        const cost = upgradeCostFor(t);
+        upCostEl.textContent = String(cost);
+        upBtn.disabled = state.money < cost;
+      }
     }
   }
 
@@ -1112,6 +1058,7 @@
     upBtn.addEventListener("click", () => {
       const t = state.towers.find(x => x.id === state.selectedTowerId);
       if (!t) return;
+      if (t.level >= MAX_LEVEL) return;
       const cost = upgradeCostFor(t);
       if (state.money < cost) return;
       state.money -= cost;
