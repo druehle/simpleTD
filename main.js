@@ -5,6 +5,7 @@
   // Canvas setup
   const CANVAS_W = 960;
   const CANVAS_H = 500;
+  const MAX_WAVES = 20; // cap run length to 20 waves
 
   // UI elements
   const moneyEl = document.getElementById("money");
