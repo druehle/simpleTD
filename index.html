@@ -16,6 +16,15 @@
             <div class="stat"><span>Lives</span><strong id="lives">0</strong></div>
             <div class="stat"><span>Wave</span><strong id="wave">0</strong></div>
           </div>
+          <div id="upgrade-panel" class="panel">
+            <strong>Selected Tower</strong>
+            <div class="grid">
+              <div><span class="label">Level</span><span id="tower-level">-</span></div>
+              <div><span class="label">Damage</span><span id="tower-dmg">-</span></div>
+              <div><span class="label">Rate</span><span id="tower-rate">-</span></div>
+              <div><span class="label">Range</span><span id="tower-range">-</span></div>
+            </div>
+          </div>
           <button id="upgrade-tower" class="btn upgrade" disabled>Upgrade (Cost <span id="upgrade-cost">-</span>)</button>
         </div>
       </header>
@@ -34,15 +43,7 @@
         <canvas id="game" width="960" height="290"></canvas>
       </div>
 
-      <div id="upgrade-panel" class="panel">
-        <strong>Selected Tower</strong>
-        <div class="grid">
-          <div><span class="label">Level</span><span id="tower-level">-</span></div>
-          <div><span class="label">Damage</span><span id="tower-dmg">-</span></div>
-          <div><span class="label">Rate</span><span id="tower-rate">-</span></div>
-          <div><span class="label">Range</span><span id="tower-range">-</span></div>
-        </div>
-      </div>
+      
 
       <footer class="footer">
         <small>All shapes, all strategy. Built with HTML5 Canvas.</small>

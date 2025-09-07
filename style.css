@@ -61,7 +61,7 @@ canvas { display: block; width: 100%; height: auto; background: #0b0e14; border-
 
 /* Upgrade panel */
 #upgrade-panel {
-  margin-top: 10px;
+  margin: 0;
   display: grid;
   gap: 8px;
 }
