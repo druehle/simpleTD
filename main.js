@@ -41,6 +41,7 @@
     towers: [],
     enemies: [],
     projectiles: [],
+    laserBeams: [],
     particles: [],
     spawnQueue: [],
     spawnInterval: 0,
@@ -92,14 +93,45 @@
   function towerStats(t) {
     const cfg = getTowerCfg(t.type);
     const lvl = t.level || 1;
+    const baseDamage = cfg.baseDamage + (cfg.perLevel.damage || 0) * (lvl - 1);
+    // Overlevel scaling: above maxLevel, make damage explode (very strong)
+    const over = Math.max(0, lvl - (cfg.maxLevel || 6));
+    const dmg = over > 0 ? Math.round(baseDamage * Math.pow(2.5, over)) : baseDamage;
     const s = {
       range: cfg.baseRange + (cfg.perLevel.range || 0) * (lvl - 1),
-      damage: cfg.baseDamage + (cfg.perLevel.damage || 0) * (lvl - 1),
+      damage: dmg,
       rate: cfg.baseRate + (cfg.perLevel.rate || 0) * (lvl - 1),
       projectileSpeed: cfg.projectileSpeed,
     };
     s.splash = (cfg.baseSplash || 0) + ((cfg.perLevel.splash || 0) * (lvl - 1));
     return s;
+  }
+
+  // Laser tower (continuous beam DPS)
+  const LASER_TOWER = {
+    name: "Laser",
+    baseCost: 120,
+    color: "#ef4444",
+    baseRange: BOMBER_TOWER.baseRange, // similar to bomber
+    baseDamage: 30, // DPS baseline
+    baseRate: 0, // not used
+    projectileSpeed: 0,
+    perLevel: { range: 10, damage: 10, rate: 0 },
+    maxLevel: 6,
+    upgradeCost(level) { return Math.round(120 * Math.pow(1.5, level - 1)); }
+  };
+
+  function getTowerCfg(type) {
+    if (type === "bomber") return BOMBER_TOWER;
+    if (type === "laser") return LASER_TOWER;
+    return BASIC_TOWER;
+  }
+
+  function upgradeCostFor(t) {
+    const cfg = getTowerCfg(t.type);
+    const lvl = t.level || 1;
+    if (lvl >= (cfg.maxLevel || 6)) return 1000; // flat cost beyond level 6
+    return cfg.upgradeCost(lvl);
   }
 
   // Utility
@@ -371,6 +403,24 @@
     ctx.restore();
   }
 
+  function drawLaserBeams() {
+    if (!state.laserBeams || state.laserBeams.length === 0) return;
+    ctx.save();
+    for (const b of state.laserBeams) {
+      // glow
+      ctx.strokeStyle = b.color || "#fecaca";
+      ctx.lineWidth = 5;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+      // core
+      ctx.strokeStyle = "#fca5a5";
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawTowers() {
     for (const t of state.towers) {
       const s = towerStats(t);
@@ -382,7 +432,11 @@
       ctx.beginPath(); ctx.arc(t.x, t.y, s.range, 0, Math.PI * 2); ctx.fillStyle = cfg.color; ctx.fill();
       ctx.globalAlpha = 1;
       // body
-      drawSquare(t.x, t.y, 24, cfg.color);
+      if (t.type === "laser") {
+        drawPolygon(t.x, t.y, 16, 3, cfg.color, "#0a0c12", 2, -Math.PI/2);
+      } else {
+        drawSquare(t.x, t.y, 24, cfg.color);
+      }
       // level pips
       ctx.fillStyle = "#a0b8ff";
       for (let i = 0; i < t.level; i++) {
@@ -405,7 +459,7 @@
 
     // center panel
     const panelW = Math.min(520, CANVAS_W - 40);
-    const panelH = 120;
+    const panelH = 138;
     const px = (CANVAS_W - panelW) / 2;
     const py = (CANVAS_H - panelH) / 2;
 
@@ -424,21 +478,27 @@
     const centerX = px + panelW / 2;
     const line1 = `Wave ${state.overlay.completedWave} Complete`;
     const line2 = `Completion reward: +$${state.overlay.earned}`;
+    const line2b = (state.overlay.bonus != null) ? `Wave bonus +3%: +$${state.overlay.bonus}` : "";
     ctx.font = "bold 18px system-ui, sans-serif";
     ctx.fillText(line1, centerX, py + 36);
     ctx.font = "16px system-ui, sans-serif";
-    ctx.fillText(line2, centerX, py + 64);
+    ctx.fillText(line2, centerX, py + 58);
+    if (line2b) {
+      ctx.fillStyle = "#9aa4b2";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText(line2b, centerX, py + 78);
+    }
 
     if (state.autoWave) {
       const secs = Math.max(0, state.nextWaveTimer);
       const line3 = `Next wave in ${secs.toFixed(1)}s`;
       ctx.fillStyle = "#9aa4b2";
       ctx.font = "14px system-ui, sans-serif";
-      ctx.fillText(line3, centerX, py + 90);
+      ctx.fillText(line3, centerX, py + 104);
     } else {
       ctx.fillStyle = "#9aa4b2";
       ctx.font = "14px system-ui, sans-serif";
-      ctx.fillText("Click Start Wave when ready", centerX, py + 90);
+      ctx.fillText("Click Start Wave when ready", centerX, py + 104);
     }
 
     ctx.restore();
@@ -458,7 +518,11 @@
     ctx.beginPath(); ctx.arc(pos.x, pos.y, s.range, 0, Math.PI * 2); ctx.fillStyle = ok ? cfg.color : "#ef4444"; ctx.fill();
     ctx.globalAlpha = 1;
     const c = ok ? cfg.color : "#ef4444";
-    drawSquare(pos.x, pos.y, 24, c);
+    if (tempType === "laser") {
+      drawPolygon(pos.x, pos.y, 16, 3, c, "#0a0c12", 2, -Math.PI/2);
+    } else {
+      drawSquare(pos.x, pos.y, 24, c);
+    }
     ctx.restore();
   }
 
@@ -613,9 +677,13 @@
         const completedWave = state.waveIndex + 1; // 1-based number of the wave just finished
         const reward = completionReward(state.waveIndex);
         state.money += reward; // completion reward only
+        // percentage bonus on hand (3%)
+        const bonus = Math.round(state.money * 0.03);
+        state.money += bonus;
         // show overlay summary
         state.overlay.visible = true;
         state.overlay.earned = reward;
+        state.overlay.bonus = bonus;
         state.overlay.completedWave = completedWave;
         if (state.autoWave) {
           state.nextWaveTimer = 5; // seconds until next wave
@@ -644,9 +712,39 @@
     }
     state.enemies = state.enemies.filter(e => e.alive || e.s < state.path.length + 40);
 
+    // prepare laser beams for this frame
+    state.laserBeams.length = 0;
+
     // towers fire
     for (const t of state.towers) {
       const stats = towerStats(t);
+      if (t.type === "laser") {
+        // Continuous DPS along a beam line toward the farthest target in range
+        const target = acquireTarget(t);
+        if (target) {
+          const tp = state.path.posAt(target.s);
+          const dx = tp.x - t.x, dy = tp.y - t.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const ux = dx / dist, uy = dy / dist;
+          const endX = t.x + ux * stats.range;
+          const endY = t.y + uy * stats.range;
+          // record beam for drawing (full range)
+          state.laserBeams.push({ x1: t.x, y1: t.y, x2: endX, y2: endY, color: "#fecaca" });
+          // damage any enemy the beam intersects
+          const thickness = 6; // px half-width considered as hit
+          for (const e of state.enemies) {
+            if (!e.alive) continue;
+            const ep = state.path.posAt(e.s);
+            const dline = pointSegDist(ep.x, ep.y, t.x, t.y, endX, endY);
+            if (dline <= thickness) {
+              e.hp -= damageAfterArmor(stats.damage * dt, "laser", e);
+              if (e.hp <= 0) { e.alive = false; giveKillReward(e); }
+            }
+          }
+        }
+        continue;
+      }
+      // projectile towers
       t.cooldown -= dt;
       if (t.cooldown <= 0) {
         const target = acquireTarget(t);
@@ -713,6 +811,7 @@
     drawBackground();
     drawPath();
     drawTowers();
+    drawLaserBeams();
     drawProjectiles();
     drawParticles();
     drawEnemies();
@@ -732,20 +831,14 @@
       upBtn.disabled = true;
     } else {
       const s = towerStats(t);
-      const cfg = getTowerCfg(t.type);
       upPanel.style.opacity = 1;
       upLevel.textContent = String(t.level);
       upDmg.textContent = String(Math.round(s.damage));
       upRate.textContent = String(s.rate.toFixed(2));
       upRange.textContent = String(Math.round(s.range));
-      if (t.level >= cfg.maxLevel) {
-        upCostEl.textContent = "MAX";
-        upBtn.disabled = true;
-      } else {
-        const cost = cfg.upgradeCost(t.level);
-        upCostEl.textContent = String(cost);
-        upBtn.disabled = state.money < cost;
-      }
+      const cost = upgradeCostFor(t);
+      upCostEl.textContent = String(cost);
+      upBtn.disabled = state.money < cost;
     }
   }
 
@@ -864,6 +957,11 @@
       btnBomber.addEventListener("mousedown", (e) => { e.preventDefault(); beginDragType(e.clientX, e.clientY, "bomber"); });
       btnBomber.addEventListener("touchstart", (e) => { const t = e.touches[0]; if (!t) return; e.preventDefault(); beginDragType(t.clientX, t.clientY, "bomber"); }, { passive: false });
     }
+    const btnLaser = document.getElementById("select-laser");
+    if (btnLaser) {
+      btnLaser.addEventListener("mousedown", (e) => { e.preventDefault(); beginDragType(e.clientX, e.clientY, "laser"); });
+      btnLaser.addEventListener("touchstart", (e) => { const t = e.touches[0]; if (!t) return; e.preventDefault(); beginDragType(t.clientX, t.clientY, "laser"); }, { passive: false });
+    }
     document.addEventListener("mouseup", endDrag);
     document.addEventListener("touchend", endDrag);
     document.addEventListener("mousemove", (e) => {
@@ -884,9 +982,7 @@
     upBtn.addEventListener("click", () => {
       const t = state.towers.find(x => x.id === state.selectedTowerId);
       if (!t) return;
-      const cfg = getTowerCfg(t.type);
-      if (t.level >= cfg.maxLevel) return;
-      const cost = cfg.upgradeCost(t.level);
+      const cost = upgradeCostFor(t);
       if (state.money < cost) return;
       state.money -= cost;
       t.level += 1;
