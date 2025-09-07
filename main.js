@@ -4,7 +4,7 @@
 (function () {
   // Canvas setup
   const CANVAS_W = 960;
-  const CANVAS_H = 290; // reduced play field height by 250px
+  const CANVAS_H = 500;
 
   // UI elements
   const moneyEl = document.getElementById("money");
