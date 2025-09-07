@@ -12,6 +12,7 @@
   const waveEl = document.getElementById("wave");
   const btnStart = document.getElementById("start-wave");
   const autoWaveCb = document.getElementById("auto-wave");
+  const turboCb = document.getElementById("turbo");
   const btnBasic = document.getElementById("select-basic");
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
@@ -37,6 +38,7 @@
     towers: [],
     enemies: [],
     projectiles: [],
+    particles: [],
     spawnQueue: [],
     spawnInterval: 0,
     spawnElapsed: 0,
@@ -46,9 +48,11 @@
     drag: { active: false, type: null, overCanvas: false },
     autoWave: false,
     nextWaveTimer: 0,
+    overlay: { visible: false, earned: 0, completedWave: 0 },
+    turbo: false,
   };
 
-  // Single basic tower definition + upgrade scaling
+  // Tower definitions + upgrade scaling
   const BASIC_TOWER = {
     name: "Basic",
     baseCost: 50,
@@ -64,14 +68,35 @@
     }
   };
 
+  const BOMBER_TOWER = {
+    name: "Bomber",
+    baseCost: 80,
+    color: "#f97316",
+    baseRange: 120,
+    baseDamage: 18,
+    baseRate: 0.9, // shots/sec
+    projectileSpeed: 420,
+    baseSplash: 20, // starts adjacent-only feel
+    perLevel: { range: 10, damage: 6, rate: 0.12, splash: 10 },
+    maxLevel: 6,
+    upgradeCost(level) {
+      return Math.round(80 * Math.pow(1.55, level - 1));
+    }
+  };
+
+  function getTowerCfg(type) { return type === "bomber" ? BOMBER_TOWER : BASIC_TOWER; }
+
   function towerStats(t) {
+    const cfg = getTowerCfg(t.type);
     const lvl = t.level || 1;
-    return {
-      range: BASIC_TOWER.baseRange + BASIC_TOWER.perLevel.range * (lvl - 1),
-      damage: BASIC_TOWER.baseDamage + BASIC_TOWER.perLevel.damage * (lvl - 1),
-      rate: BASIC_TOWER.baseRate + BASIC_TOWER.perLevel.rate * (lvl - 1),
-      projectileSpeed: BASIC_TOWER.projectileSpeed
+    const s = {
+      range: cfg.baseRange + (cfg.perLevel.range || 0) * (lvl - 1),
+      damage: cfg.baseDamage + (cfg.perLevel.damage || 0) * (lvl - 1),
+      rate: cfg.baseRate + (cfg.perLevel.rate || 0) * (lvl - 1),
+      projectileSpeed: cfg.projectileSpeed,
     };
+    s.splash = (cfg.baseSplash || 0) + ((cfg.perLevel.splash || 0) * (lvl - 1));
+    return s;
   }
 
   // Utility
@@ -204,6 +229,11 @@
     return { count, hp, speed, gap };
   }
 
+  // Reward for completing a wave (not kill money)
+  function completionReward(index) { // index is 0-based
+    return 50; // flat reward; adjust if desired
+  }
+
   // Drawing helpers
   function drawBackground() {
     // hex grid background
@@ -260,6 +290,53 @@
     ctx.restore();
   }
 
+  // Explosion particles
+  function spawnParticles(x, y, color, count = 14) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 120 + Math.random() * 140;
+      state.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.5 + Math.random() * 0.4, color });
+    }
+  }
+
+  function updateParticles(dt) {
+    const g = 600; // quick gravity to settle pixels fast
+    for (const p of state.particles) {
+      p.life -= dt;
+      p.vy += g * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+    state.particles = state.particles.filter(p => p.life > 0 && p.y < CANVAS_H + 10);
+  }
+
+  function drawParticles() {
+    if (state.particles.length === 0) return;
+    ctx.save();
+    for (const p of state.particles) {
+      const alpha = Math.max(0, Math.min(1, p.life / 0.9));
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color || "#ffd166";
+      ctx.fillRect(p.x, p.y, 2, 2);
+    }
+    ctx.restore();
+  }
+
+  function explodeAt(x, y, splashDmg, radius, exclude) {
+    if (radius <= 0 || splashDmg <= 0) return;
+    spawnParticles(x, y, "#fbbf24");
+    for (const e of state.enemies) {
+      if (!e.alive) continue;
+      if (exclude && e === exclude) continue;
+      const ep = state.path.posAt(e.s);
+      const d = Math.hypot(ep.x - x, ep.y - y);
+      if (d <= radius) {
+        e.hp -= splashDmg;
+        if (e.hp <= 0) { e.alive = false; state.money += 5; updateHUD(); }
+      }
+    }
+  }
+
   function drawProjectiles() {
     ctx.save();
     ctx.fillStyle = "#e0f2ff";
@@ -272,14 +349,15 @@
   function drawTowers() {
     for (const t of state.towers) {
       const s = towerStats(t);
+      const cfg = getTowerCfg(t.type);
       const selected = (t.id === state.selectedTowerId);
       ctx.save();
       // subtle range disc
       ctx.globalAlpha = 0.07;
-      ctx.beginPath(); ctx.arc(t.x, t.y, s.range, 0, Math.PI * 2); ctx.fillStyle = BASIC_TOWER.color; ctx.fill();
+      ctx.beginPath(); ctx.arc(t.x, t.y, s.range, 0, Math.PI * 2); ctx.fillStyle = cfg.color; ctx.fill();
       ctx.globalAlpha = 1;
       // body
-      drawSquare(t.x, t.y, 24, BASIC_TOWER.color);
+      drawSquare(t.x, t.y, 24, cfg.color);
       // level pips
       ctx.fillStyle = "#a0b8ff";
       for (let i = 0; i < t.level; i++) {
@@ -293,18 +371,68 @@
     }
   }
 
+  function drawOverlay() {
+    if (!state.overlay.visible) return;
+    ctx.save();
+    // dim background
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+    // center panel
+    const panelW = Math.min(520, CANVAS_W - 40);
+    const panelH = 120;
+    const px = (CANVAS_W - panelW) / 2;
+    const py = (CANVAS_H - panelH) / 2;
+
+    ctx.fillStyle = "#151a22";
+    ctx.strokeStyle = "#202737";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(px, py, panelW, panelH);
+    ctx.fill(); ctx.stroke();
+
+    // text
+    ctx.fillStyle = "#e6edf3";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    const centerX = px + panelW / 2;
+    const line1 = `Wave ${state.overlay.completedWave} Complete`;
+    const line2 = `Completion reward: +$${state.overlay.earned}`;
+    ctx.font = "bold 18px system-ui, sans-serif";
+    ctx.fillText(line1, centerX, py + 36);
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.fillText(line2, centerX, py + 64);
+
+    if (state.autoWave) {
+      const secs = Math.max(0, state.nextWaveTimer);
+      const line3 = `Next wave in ${secs.toFixed(1)}s`;
+      ctx.fillStyle = "#9aa4b2";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText(line3, centerX, py + 90);
+    } else {
+      ctx.fillStyle = "#9aa4b2";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("Click Start Wave when ready", centerX, py + 90);
+    }
+
+    ctx.restore();
+  }
+
   function drawPlacementPreview() {
     const show = (state.selectedTool === "place") || state.drag.active;
     if (!(state.mouse.inside || state.drag.overCanvas)) return;
     if (!show) return;
     const pos = state.mouse;
     const ok = canPlaceTower(pos);
-    const s = towerStats({ level: 1 });
+    const tempType = pendingTowerType();
+    const s = towerStats({ level: 1, type: tempType });
+    const cfg = getTowerCfg(tempType);
     ctx.save();
     ctx.globalAlpha = 0.2;
-    ctx.beginPath(); ctx.arc(pos.x, pos.y, s.range, 0, Math.PI * 2); ctx.fillStyle = ok ? BASIC_TOWER.color : "#ef4444"; ctx.fill();
+    ctx.beginPath(); ctx.arc(pos.x, pos.y, s.range, 0, Math.PI * 2); ctx.fillStyle = ok ? cfg.color : "#ef4444"; ctx.fill();
     ctx.globalAlpha = 1;
-    const c = ok ? BASIC_TOWER.color : "#ef4444";
+    const c = ok ? cfg.color : "#ef4444";
     drawSquare(pos.x, pos.y, 24, c);
     ctx.restore();
   }
@@ -331,6 +459,7 @@
     state.inWave = true;
     btnStart.disabled = true;
     state.nextWaveTimer = 0;
+    state.overlay.visible = false;
   }
 
   // Tower targeting: prefer enemy furthest along within range
@@ -355,7 +484,9 @@
     const tp = state.path.posAt(target.s);
     const angle = Math.atan2(tp.y - origin.y, tp.x - origin.x);
     const speed = stats.projectileSpeed;
-    state.projectiles.push({ x: origin.x, y: origin.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, speed, dmg: stats.damage, target });
+    const kind = (tower.type === "bomber") ? "explosive" : "normal";
+    const splash = stats.splash || 0;
+    state.projectiles.push({ x: origin.x, y: origin.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, speed, dmg: stats.damage, target, kind, splash });
   }
 
   // Update loop
@@ -374,19 +505,29 @@
         // wave completed
         state.inWave = false;
         btnStart.disabled = false;
-        state.waveIndex++;
-        state.money += 50; // reward
-        updateHUD();
+        const completedWave = state.waveIndex + 1; // 1-based number of the wave just finished
+        const reward = completionReward(state.waveIndex);
+        state.money += reward; // completion reward only
+        // show overlay summary
+        state.overlay.visible = true;
+        state.overlay.earned = reward;
+        state.overlay.completedWave = completedWave;
         if (state.autoWave) {
           state.nextWaveTimer = 5; // seconds until next wave
+        } else {
+          state.nextWaveTimer = 0;
         }
+        // advance to next wave index for upcoming start
+        state.waveIndex++;
+        updateHUD();
       }
     }
 
     // enemies along path
+    const speedMul = state.turbo ? 2 : 1;
     for (const e of state.enemies) {
       if (!e.alive) continue;
-      e.s += e.speed * dt;
+      e.s += e.speed * speedMul * dt;
       if (e.s >= state.path.length) {
         e.alive = false;
         state.lives--;
@@ -416,8 +557,12 @@
         const dx = tp.x - p.x, dy = tp.y - p.y;
         const d = Math.hypot(dx, dy);
         if (d <= 10) {
+          // impact
           tgt.hp -= p.dmg;
           p.dead = true;
+          if (p.kind === "explosive") {
+            explodeAt(tp.x, tp.y, Math.round(p.dmg * 0.6), p.splash, tgt);
+          }
           if (tgt.hp <= 0) {
             tgt.alive = false;
             state.money += 5;
@@ -438,6 +583,9 @@
     }
     state.projectiles = state.projectiles.filter(p => !p.dead);
 
+    // particles
+    updateParticles(dt);
+
     // auto wave countdown when idle
     if (!state.inWave && state.autoWave) {
       const idle = state.spawnQueue.length === 0 && state.enemies.every(e => !e.alive);
@@ -454,8 +602,10 @@
     drawPath();
     drawTowers();
     drawProjectiles();
+    drawParticles();
     drawEnemies();
     drawPlacementPreview();
+    drawOverlay();
   }
 
   function updateHUD() {
@@ -470,16 +620,17 @@
       upBtn.disabled = true;
     } else {
       const s = towerStats(t);
+      const cfg = getTowerCfg(t.type);
       upPanel.style.opacity = 1;
       upLevel.textContent = String(t.level);
       upDmg.textContent = String(Math.round(s.damage));
       upRate.textContent = String(s.rate.toFixed(2));
       upRange.textContent = String(Math.round(s.range));
-      if (t.level >= BASIC_TOWER.maxLevel) {
+      if (t.level >= cfg.maxLevel) {
         upCostEl.textContent = "MAX";
         upBtn.disabled = true;
       } else {
-        const cost = BASIC_TOWER.upgradeCost(t.level);
+        const cost = cfg.upgradeCost(t.level);
         upCostEl.textContent = String(cost);
         upBtn.disabled = state.money < cost;
       }
@@ -493,6 +644,12 @@
     return { x, y };
   }
 
+  function pendingTowerType() {
+    if (state.drag.active && state.drag.type) return state.drag.type;
+    if (state.selectedTool === "place") return "basic";
+    return "basic";
+  }
+
   function canPlaceTower(pos) {
     const minPath = 28; // cannot place within 28px of path
     const minTower = 30; // spacing from other towers
@@ -500,14 +657,17 @@
     const dPath = state.path.minDistTo(pos.x, pos.y);
     if (dPath < minPath) return false;
     for (const t of state.towers) if (dist(pos, t) < minTower) return false;
-    return state.money >= BASIC_TOWER.baseCost;
+    const cfg = getTowerCfg(pendingTowerType());
+    return state.money >= cfg.baseCost;
   }
 
   let nextTowerId = 1;
   function addTower(pos) {
     if (!canPlaceTower(pos)) return false;
-    state.money -= BASIC_TOWER.baseCost;
-    state.towers.push({ id: nextTowerId++, x: pos.x, y: pos.y, level: 1, cooldown: 0 });
+    const type = pendingTowerType();
+    const cfg = getTowerCfg(type);
+    state.money -= cfg.baseCost;
+    state.towers.push({ id: nextTowerId++, type, x: pos.x, y: pos.y, level: 1, cooldown: 0 });
     updateHUD();
     return true;
   }
@@ -550,6 +710,12 @@
         }
       }
     });
+    // TURBO toggle
+    if (turboCb) {
+      turboCb.addEventListener("change", () => {
+        state.turbo = !!turboCb.checked;
+      });
+    }
     // Drag-to-place from top button
     const beginDrag = (clientX, clientY) => {
       state.drag.active = true;
@@ -569,8 +735,21 @@
       state.drag.type = null;
       state.drag.overCanvas = false;
     };
-    btnBasic.addEventListener("mousedown", (e) => { e.preventDefault(); beginDrag(e.clientX, e.clientY); });
-    btnBasic.addEventListener("touchstart", (e) => { const t = e.touches[0]; if (!t) return; e.preventDefault(); beginDrag(t.clientX, t.clientY); }, { passive: false });
+    const beginDragType = (clientX, clientY, type) => {
+      state.drag.active = true;
+      state.drag.type = type;
+      state.drag.overCanvas = false;
+      const rect = canvas.getBoundingClientRect();
+      state.mouse.x = (clientX - rect.left) * (canvas.width / rect.width);
+      state.mouse.y = (clientY - rect.top) * (canvas.height / rect.height);
+    };
+    btnBasic.addEventListener("mousedown", (e) => { e.preventDefault(); beginDragType(e.clientX, e.clientY, "basic"); });
+    btnBasic.addEventListener("touchstart", (e) => { const t = e.touches[0]; if (!t) return; e.preventDefault(); beginDragType(t.clientX, t.clientY, "basic"); }, { passive: false });
+    const btnBomber = document.getElementById("select-bomber");
+    if (btnBomber) {
+      btnBomber.addEventListener("mousedown", (e) => { e.preventDefault(); beginDragType(e.clientX, e.clientY, "bomber"); });
+      btnBomber.addEventListener("touchstart", (e) => { const t = e.touches[0]; if (!t) return; e.preventDefault(); beginDragType(t.clientX, t.clientY, "bomber"); }, { passive: false });
+    }
     document.addEventListener("mouseup", endDrag);
     document.addEventListener("touchend", endDrag);
     document.addEventListener("mousemove", (e) => {
@@ -591,8 +770,9 @@
     upBtn.addEventListener("click", () => {
       const t = state.towers.find(x => x.id === state.selectedTowerId);
       if (!t) return;
-      if (t.level >= BASIC_TOWER.maxLevel) return;
-      const cost = BASIC_TOWER.upgradeCost(t.level);
+      const cfg = getTowerCfg(t.type);
+      if (t.level >= cfg.maxLevel) return;
+      const cost = cfg.upgradeCost(t.level);
       if (state.money < cost) return;
       state.money -= cost;
       t.level += 1;
@@ -618,6 +798,7 @@
     attachEvents();
     // initialize auto wave based on checkbox
     state.autoWave = !!(autoWaveCb && autoWaveCb.checked);
+    state.turbo = !!(turboCb && turboCb.checked);
     requestAnimationFrame(loop);
   }
 
