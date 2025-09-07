@@ -339,15 +339,6 @@
       } else {
         drawHex(p.x, p.y, e.r, e.color, "#0a0c12", 2);
       }
-      // HP text centered on unit
-      ctx.font = "12px system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const hpText = String(Math.max(0, Math.ceil(e.hp)));
-      ctx.lineWidth = 3; ctx.strokeStyle = "#0a0c12";
-      ctx.fillStyle = "#ffffff";
-      ctx.strokeText(hpText, p.x, p.y + 1);
-      ctx.fillText(hpText, p.x, p.y + 1);
     }
     ctx.restore();
   }
@@ -385,18 +376,17 @@
   }
 
   function explodeAt(x, y, splashDmg, radius, exclude, sourceType = "bomber") {
-    if (radius <= 0 || splashDmg <= 0) return;
+    if (radius <= 0) return;
     spawnParticles(x, y, "#fbbf24");
+    const hits = [];
     for (const e of state.enemies) {
       if (!e.alive) continue;
       if (exclude && e === exclude) continue;
       const ep = state.path.posAt(e.s);
       const d = Math.hypot(ep.x - x, ep.y - y);
-      if (d <= radius) {
-        e.hp -= damageAfterArmor(splashDmg, sourceType, e);
-        if (e.hp <= 0) { onEnemyKilled(e); }
-      }
+      if (d <= radius) hits.push(e);
     }
+    for (const e of hits) onEnemyHit(e);
   }
 
   function drawProjectiles() {
@@ -591,55 +581,53 @@
   }
 
   // Enemy factory
-  function colorForHardness(hp) {
-    if (hp < 50) return "#8bd9a3";       // easy - green
-    if (hp < 110) return "#ffd166";      // normal - yellow
-    if (hp < 180) return "#f4a261";      // tough - orange
-    if (hp < 280) return "#ef4444";      // hard - red
-    return "#8b5cf6";                    // elite - purple
-  }
-  function damageAfterArmor(dmg, sourceType, enemy) {
-    let out = dmg;
-    // High armor vs basic shots only
-    if (sourceType === "basic" && enemy.armorBasicMul != null) {
-      out = out * enemy.armorBasicMul;
+  function colorForSides(sides) {
+    switch (sides) {
+      case 8: return "#94a3b8"; // slate
+      case 7: return "#8b5cf6"; // purple
+      case 6: return "#8bd9a3"; // green
+      case 5: return "#ffd166"; // yellow
+      case 4: return "#f4a261"; // orange
+      case 3: return "#ef4444"; // red
+      default: return "#9ca3af"; // gray fallback
     }
-    return out;
   }
   let nextEnemyId = 1;
   function spawnEnemy(hp, speed, type = "normal") {
     if (type === "armored") {
       // Armored octagon: tougher, slightly larger, resists basic shots
-      state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 16, alive: true, color: "#94a3b8", shape: "oct", sides: 8, armorBasicMul: 0.4, spawnId: nextEnemyId++ });
+      const sides = 8;
+      state.enemies.push({ s: 0, speed, r: 16, alive: true, color: colorForSides(sides), shape: "oct", sides, spawnId: nextEnemyId++ });
     } else if (type === "boss") {
       // Boss: gold, large, slow-ish, big HP, big reward
-      state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 22, alive: true, color: "#ffd700", shape: "hex", sides: 6, boss: true, spawnId: nextEnemyId++ });
+      const sides = 6;
+      state.enemies.push({ s: 0, speed, r: 22, alive: true, color: "#ffd700", shape: "hex", sides, boss: true, spawnId: nextEnemyId++ });
     } else {
-      const color = colorForHardness(hp);
-      state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 14, alive: true, color, shape: "hex", sides: 6, spawnId: nextEnemyId++ });
+      const sides = 6;
+      state.enemies.push({ s: 0, speed, r: 14, alive: true, color: colorForSides(sides), shape: "hex", sides, spawnId: nextEnemyId++ });
     }
   }
 
-  function onEnemyKilled(enemy) {
+  function onEnemyHit(enemy) {
     if (!enemy.alive) return;
-    enemy.alive = false;
-    giveKillReward(enemy);
     const sides = enemy.sides || (enemy.shape === "oct" ? 8 : 6);
-    if (sides && sides > 3) {
+    enemy.alive = false;
+    if (sides > 3) {
       const childSides = sides - 1;
-      const childHp = Math.max(1, Math.round(enemy.maxHp * 0.6));
       const childR = enemy.r;
       for (let i = 0; i < 2; i++) {
-        const color = colorForHardness(childHp);
-        state.enemies.push({ s: enemy.s, hp: childHp, maxHp: childHp, speed: enemy.speed, r: childR, alive: true, color, shape: "poly", sides: childSides, spawnId: nextEnemyId++ });
+        const color = colorForSides(childSides);
+        state.enemies.push({ s: enemy.s, speed: enemy.speed, r: childR, alive: true, color, shape: "poly", sides: childSides, spawnId: nextEnemyId++ });
       }
+    } else {
+      // triangle removed -> reward
+      giveKillReward(enemy);
     }
   }
 
   function killReward(enemy) {
-    if (enemy.boss) return 500;
-    // Scale with difficulty (HP proxy)
-    return Math.max(5, Math.round(enemy.maxHp * 0.08));
+    // Reward only when eliminated (triangles). Flat for simplicity.
+    return 5;
   }
 
   function giveKillReward(enemy) {
@@ -652,8 +640,8 @@
     if (state.inWave) return;
     if (state.waveIndex >= MAX_WAVES) { if (modalWin) modalWin.classList.remove("hidden"); return; }
     const w = waveFor(state.waveIndex);
-    // Base queue all normals
-    state.spawnQueue = Array.from({ length: w.count }, () => ({ hp: w.hp, speed: w.speed, type: "normal" }));
+    // Base queue all normals (HP removed)
+    state.spawnQueue = Array.from({ length: w.count }, () => ({ speed: w.speed, type: "normal" }));
     // Inject some armored units on later waves
     if (state.waveIndex >= 1) {
       const armoredN = Math.max(2, Math.floor(w.count * 0.2));
@@ -661,14 +649,13 @@
         // Spread armored through the wave (every ~Nth)
         const idx = Math.floor((i + 1) * (state.spawnQueue.length / (armoredN + 1)));
         const base = state.spawnQueue[idx] || state.spawnQueue[state.spawnQueue.length - 1];
-        state.spawnQueue[idx] = { hp: Math.round(base.hp * 2.4), speed: Math.max(50, Math.round(base.speed * 0.85)), type: "armored" };
+        state.spawnQueue[idx] = { speed: Math.max(50, Math.round(base.speed * 0.85)), type: "armored" };
       }
     }
     // Add one boss at the end of the wave (waves 3+ only)
     if (state.waveIndex >= 2) {
-      const bossHp = Math.round(w.hp * 10); // very tanky
       const bossSpeed = Math.max(45, Math.round(w.speed * 0.8));
-      state.spawnQueue.push({ hp: bossHp, speed: bossSpeed, type: "boss" });
+      state.spawnQueue.push({ speed: bossSpeed, type: "boss" });
     }
     state.spawnInterval = w.gap;
     state.spawnElapsed = 0;
@@ -771,7 +758,7 @@
       while (state.spawnQueue.length > 0 && state.spawnElapsed >= interval) {
         state.spawnElapsed -= interval;
         const next = state.spawnQueue.shift();
-        spawnEnemy(next.hp, next.speed, next.type || "normal");
+        spawnEnemy(0, next.speed, next.type || "normal");
       }
       if (state.spawnQueue.length === 0 && state.enemies.every(e => !e.alive)) {
         // wave completed
@@ -838,15 +825,14 @@
           state.laserBeams.push({ x1: t.x, y1: t.y, x2: endX, y2: endY, color: "#fecaca" });
           // damage along beam
           const thickness = 10;
+          const hits = [];
           for (const e of state.enemies) {
             if (!e.alive) continue;
             const ep = state.path.posAt(e.s);
             const dline = pointSegDist(ep.x, ep.y, t.x, t.y, endX, endY);
-            if (dline <= thickness + (e.r || 0)) {
-              e.hp -= damageAfterArmor(stats.damage * dt, "laser", e);
-              if (e.hp <= 0) { onEnemyKilled(e); }
-            }
+            if (dline <= thickness + (e.r || 0)) hits.push(e);
           }
+          for (const e of hits) onEnemyHit(e);
         }
         continue;
       }
@@ -869,13 +855,12 @@
         const dx = tp.x - p.x, dy = tp.y - p.y;
         const d = Math.hypot(dx, dy);
         if (d <= 10) {
-          // impact
-          tgt.hp -= damageAfterArmor(p.dmg, p.sourceType || "basic", tgt);
+          // impact -> split/remove on hit
           p.dead = true;
           if (p.kind === "explosive") {
             explodeAt(tp.x, tp.y, Math.round(p.dmg * 0.6), p.splash, tgt, p.sourceType || "bomber");
           }
-          if (tgt.hp <= 0) { onEnemyKilled(tgt); }
+          onEnemyHit(tgt);
         } else {
           const v = p.speed || 420;
           const ux = dx / (d || 1), uy = dy / (d || 1);
