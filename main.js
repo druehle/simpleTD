@@ -20,6 +20,8 @@
   // Modal elements
   const modalGameOver = document.getElementById("gameover-modal");
   const btnNewGame = document.getElementById("btn-newgame");
+  const modalWin = document.getElementById("win-modal");
+  const btnNewMap = document.getElementById("btn-newmap");
 
   // Upgrade panel
   const upPanel = document.getElementById("upgrade-panel");
