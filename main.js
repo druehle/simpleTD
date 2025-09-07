@@ -11,6 +11,7 @@
   const livesEl = document.getElementById("lives");
   const waveEl = document.getElementById("wave");
   const btnStart = document.getElementById("start-wave");
+  const autoWaveCb = document.getElementById("auto-wave");
   const btnBasic = document.getElementById("select-basic");
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
@@ -43,6 +44,8 @@
     selectedTool: "none", // or "place"
     selectedTowerId: null,
     drag: { active: false, type: null, overCanvas: false },
+    autoWave: false,
+    nextWaveTimer: 0,
   };
 
   // Single basic tower definition + upgrade scaling
@@ -327,6 +330,7 @@
     state.spawnElapsed = 0;
     state.inWave = true;
     btnStart.disabled = true;
+    state.nextWaveTimer = 0;
   }
 
   // Tower targeting: prefer enemy furthest along within range
@@ -373,6 +377,9 @@
         state.waveIndex++;
         state.money += 50; // reward
         updateHUD();
+        if (state.autoWave) {
+          state.nextWaveTimer = 5; // seconds until next wave
+        }
       }
     }
 
@@ -430,6 +437,15 @@
       if (p.x < -20 || p.x > CANVAS_W + 20 || p.y < -20 || p.y > CANVAS_H + 20) p.dead = true;
     }
     state.projectiles = state.projectiles.filter(p => !p.dead);
+
+    // auto wave countdown when idle
+    if (!state.inWave && state.autoWave) {
+      const idle = state.spawnQueue.length === 0 && state.enemies.every(e => !e.alive);
+      if (idle && state.nextWaveTimer > 0) {
+        state.nextWaveTimer -= dt;
+        if (state.nextWaveTimer <= 0) startWave();
+      }
+    }
   }
 
   function render() {
@@ -522,6 +538,18 @@
       updateHUD();
     });
     btnStart.addEventListener("click", startWave);
+    // Auto wave toggle
+    autoWaveCb.addEventListener("change", () => {
+      state.autoWave = !!autoWaveCb.checked;
+      if (!state.autoWave) {
+        state.nextWaveTimer = 0;
+      } else {
+        // If idle right now, start a countdown
+        if (!state.inWave && state.spawnQueue.length === 0 && state.enemies.every(e => !e.alive)) {
+          state.nextWaveTimer = 5;
+        }
+      }
+    });
     // Drag-to-place from top button
     const beginDrag = (clientX, clientY) => {
       state.drag.active = true;
@@ -588,6 +616,8 @@
     setPlacementActive(false);
     updateHUD();
     attachEvents();
+    // initialize auto wave based on checkbox
+    state.autoWave = !!(autoWaveCb && autoWaveCb.checked);
     requestAnimationFrame(loop);
   }
 
