@@ -421,6 +421,35 @@
     ctx.restore();
   }
 
+  // Ray to canvas edge: find intersection of a ray from (x,y) in direction (ux,uy) with canvas bounds
+  function rayToCanvasEdge(x, y, ux, uy) {
+    const eps = 1e-6;
+    const candidates = [];
+    if (Math.abs(ux) > eps) {
+      let t = (0 - x) / ux; // left
+      if (t > 0) {
+        const yy = y + t * uy; if (yy >= 0 && yy <= CANVAS_H) candidates.push({ t, x: 0, y: yy });
+      }
+      t = (CANVAS_W - x) / ux; // right
+      if (t > 0) {
+        const yy = y + t * uy; if (yy >= 0 && yy <= CANVAS_H) candidates.push({ t, x: CANVAS_W, y: yy });
+      }
+    }
+    if (Math.abs(uy) > eps) {
+      let t = (0 - y) / uy; // top
+      if (t > 0) {
+        const xx = x + t * ux; if (xx >= 0 && xx <= CANVAS_W) candidates.push({ t, x: xx, y: 0 });
+      }
+      t = (CANVAS_H - y) / uy; // bottom
+      if (t > 0) {
+        const xx = x + t * ux; if (xx >= 0 && xx <= CANVAS_W) candidates.push({ t, x: xx, y: CANVAS_H });
+      }
+    }
+    if (candidates.length === 0) return { x: x + ux * 2000, y: y + uy * 2000 };
+    candidates.sort((a, b) => a.t - b.t);
+    return { x: candidates[0].x, y: candidates[0].y };
+  }
+
   function drawTowers() {
     for (const t of state.towers) {
       const s = towerStats(t);
@@ -583,10 +612,12 @@
         state.spawnQueue[idx] = { hp: Math.round(base.hp * 2.4), speed: Math.max(50, Math.round(base.speed * 0.85)), type: "armored" };
       }
     }
-    // Add one boss at the end of the wave
-    const bossHp = Math.round(w.hp * 10); // very tanky
-    const bossSpeed = Math.max(45, Math.round(w.speed * 0.8));
-    state.spawnQueue.push({ hp: bossHp, speed: bossSpeed, type: "boss" });
+    // Add one boss at the end of the wave (waves 3+ only)
+    if (state.waveIndex >= 2) {
+      const bossHp = Math.round(w.hp * 10); // very tanky
+      const bossSpeed = Math.max(45, Math.round(w.speed * 0.8));
+      state.spawnQueue.push({ hp: bossHp, speed: bossSpeed, type: "boss" });
+    }
     state.spawnInterval = w.gap;
     state.spawnElapsed = 0;
     state.inWave = true;
@@ -745,9 +776,9 @@
           const dx = tp.x - t.x, dy = tp.y - t.y;
           const dist = Math.hypot(dx, dy) || 1;
           const ux = dx / dist, uy = dy / dist;
-          const endX = t.x + ux * (stats.range * 2);
-          const endY = t.y + uy * (stats.range * 2);
-          // record beam for drawing (full range)
+          const edge = rayToCanvasEdge(t.x, t.y, ux, uy);
+          const endX = edge.x, endY = edge.y;
+          // record beam for drawing (to canvas edge)
           state.laserBeams.push({ x1: t.x, y1: t.y, x2: endX, y2: endY, color: "#fecaca" });
           // damage any enemy the beam intersects
           const thickness = 6; // px half-width considered as hit
