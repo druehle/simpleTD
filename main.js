@@ -35,7 +35,7 @@
 
   // Game state
   const state = {
-    money: 120,
+    money: 10120,
     lives: 20,
     waveIndex: 0,
     inWave: false,
@@ -675,7 +675,7 @@
 
   function resetGame() {
     // Reset core state
-    state.money = 120;
+    state.money = 10120;
     state.lives = 20;
     state.waveIndex = 0;
     state.inWave = false;
