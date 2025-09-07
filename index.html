@@ -26,6 +26,7 @@
             </div>
           </div>
           <button id="upgrade-tower" class="btn upgrade" disabled>Upgrade (Cost <span id="upgrade-cost">-</span>)</button>
+          <div class="version-badge">v<span id="version">0.0</span></div>
         </div>
       </header>
 
@@ -55,13 +56,13 @@
         </div>
       </div>
 
-      
 
-      <footer class="footer">
-        <small>All shapes, all strategy. Built with HTML5 Canvas.</small>
-      </footer>
     </div>
 
+    <script>
+      // Injected at build-time; fallback to commit-count-based version
+      window.APP_VERSION = window.APP_VERSION || "v0.0";
+    </script>
     <script src="main.js"></script>
   </body>
   </html>

@@ -14,6 +14,7 @@
   const autoWaveCb = document.getElementById("auto-wave");
   const turboCb = document.getElementById("turbo");
   const btnBasic = document.getElementById("select-basic");
+  const versionEl = document.getElementById("version");
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
   // Modal elements
@@ -1074,6 +1075,11 @@
     // initialize auto wave based on checkbox
     state.autoWave = !!(autoWaveCb && autoWaveCb.checked);
     state.turbo = !!(turboCb && turboCb.checked);
+    if (versionEl && window.APP_VERSION) {
+      // strip leading 'v' if present in APP_VERSION
+      const v = String(window.APP_VERSION).replace(/^v/i, "");
+      versionEl.textContent = v;
+    }
     requestAnimationFrame(loop);
   }
 

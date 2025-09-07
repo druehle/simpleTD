@@ -29,7 +29,7 @@ body {
 .header h1 { margin: 0; font-size: 20px; letter-spacing: 0.5px; color: var(--text); }
 .header-right {
   display: grid;
-  grid-template-columns: minmax(260px,1fr) minmax(260px,1fr) auto;
+  grid-template-columns: minmax(260px,1fr) minmax(260px,1fr) auto auto;
   gap: 10px;
   align-items: stretch;
 }
@@ -96,7 +96,18 @@ body {
 
 canvas { display: block; width: 100%; height: auto; background: #0b0e14; border-radius: 6px; }
 
-.footer { color: var(--muted); margin-top: 12px; text-align: center; }
+/* removed footer */
+
+.version-badge {
+  align-self: center;
+  justify-self: end;
+  font-weight: 700;
+  color: #ffd166;
+  background: #161b25;
+  border: 1px solid #202737;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
 
 /* Upgrade panel */
 #upgrade-panel {
