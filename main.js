@@ -406,16 +406,28 @@
   function drawLaserBeams() {
     if (!state.laserBeams || state.laserBeams.length === 0) return;
     ctx.save();
+    const t = state.time || 0;
     for (const b of state.laserBeams) {
-      // glow
+      const pulse = 0.6 + 0.4 * Math.sin(t * 8.0);
+      ctx.lineCap = "round";
+      // Outer glow
       ctx.strokeStyle = b.color || "#fecaca";
-      ctx.lineWidth = 5;
-      ctx.globalAlpha = 0.5;
+      ctx.globalAlpha = 0.35 + 0.25 * pulse;
+      ctx.lineWidth = 14 + 8 * pulse;
+      ctx.shadowColor = "#fca5a5";
+      ctx.shadowBlur = 18 + 10 * pulse;
       ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
-      // core
-      ctx.strokeStyle = "#fca5a5";
-      ctx.lineWidth = 2;
+      // Middle glow
+      ctx.shadowBlur = 8;
+      ctx.globalAlpha = 0.8;
+      ctx.strokeStyle = "#fda4af";
+      ctx.lineWidth = 8 + 4 * pulse;
+      ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+      // Core beam
+      ctx.shadowBlur = 0;
       ctx.globalAlpha = 1;
+      ctx.strokeStyle = "#fee2e2";
+      ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
     }
     ctx.restore();
@@ -781,7 +793,7 @@
           // record beam for drawing (to canvas edge)
           state.laserBeams.push({ x1: t.x, y1: t.y, x2: endX, y2: endY, color: "#fecaca" });
           // damage any enemy the beam intersects
-          const thickness = 6; // base beam half-width
+          const thickness = 10; // base beam half-width (visual thickness aligned)
           for (const e of state.enemies) {
             if (!e.alive) continue;
             const ep = state.path.posAt(e.s);
