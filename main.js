@@ -198,6 +198,24 @@
     if (strokeStyle && lineWidth > 0) { ctx.strokeStyle = strokeStyle; ctx.lineWidth = lineWidth; ctx.stroke(p); }
   }
 
+  // Generic regular polygon
+  function polygonPath(x, y, r, sides, rotation = 0) {
+    const p = new Path2D();
+    for (let i = 0; i < sides; i++) {
+      const a = rotation + (Math.PI * 2 * i) / sides;
+      const px = x + r * Math.cos(a);
+      const py = y + r * Math.sin(a);
+      if (i === 0) p.moveTo(px, py); else p.lineTo(px, py);
+    }
+    p.closePath();
+    return p;
+  }
+  function drawPolygon(x, y, r, sides, fillStyle, strokeStyle = "#0a0c12", lineWidth = 2, rotation = 0) {
+    const p = polygonPath(x, y, r, sides, rotation);
+    if (fillStyle) { ctx.fillStyle = fillStyle; ctx.fill(p); }
+    if (strokeStyle && lineWidth > 0) { ctx.strokeStyle = strokeStyle; ctx.lineWidth = lineWidth; ctx.stroke(p); }
+  }
+
   function drawHexGrid() {
     // flat-top hex grid covering the canvas
     ctx.save();
@@ -275,8 +293,12 @@
     for (const e of state.enemies) {
       if (!e.alive) continue;
       const p = state.path.posAt(e.s);
-      // body as hex, color encodes hardness
-      drawHex(p.x, p.y, e.r, e.color, "#0a0c12", 2);
+      // body shape
+      if (e.shape === "oct") {
+        drawPolygon(p.x, p.y, e.r, 8, e.color, "#0a0c12", 2);
+      } else {
+        drawHex(p.x, p.y, e.r, e.color, "#0a0c12", 2);
+      }
       // HP text centered on unit
       ctx.font = "12px system-ui, sans-serif";
       ctx.textAlign = "center";
@@ -322,7 +344,7 @@
     ctx.restore();
   }
 
-  function explodeAt(x, y, splashDmg, radius, exclude) {
+  function explodeAt(x, y, splashDmg, radius, exclude, sourceType = "bomber") {
     if (radius <= 0 || splashDmg <= 0) return;
     spawnParticles(x, y, "#fbbf24");
     for (const e of state.enemies) {
@@ -331,7 +353,7 @@
       const ep = state.path.posAt(e.s);
       const d = Math.hypot(ep.x - x, ep.y - y);
       if (d <= radius) {
-        e.hp -= splashDmg;
+        e.hp -= damageAfterArmor(splashDmg, sourceType, e);
         if (e.hp <= 0) { e.alive = false; state.money += 5; updateHUD(); }
       }
     }
@@ -445,15 +467,39 @@
     if (hp < 280) return "#ef4444";      // hard - red
     return "#8b5cf6";                    // elite - purple
   }
-  function spawnEnemy(hp, speed) {
-    const color = colorForHardness(hp);
-    state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 14, alive: true, color });
+  function damageAfterArmor(dmg, sourceType, enemy) {
+    let out = dmg;
+    // High armor vs basic shots only
+    if (sourceType === "basic" && enemy.armorBasicMul != null) {
+      out = out * enemy.armorBasicMul;
+    }
+    return out;
+  }
+  function spawnEnemy(hp, speed, type = "normal") {
+    if (type === "armored") {
+      // Armored octagon: tougher, slightly larger, resists basic shots
+      state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 16, alive: true, color: "#94a3b8", shape: "oct", armorBasicMul: 0.4 });
+    } else {
+      const color = colorForHardness(hp);
+      state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 14, alive: true, color, shape: "hex" });
+    }
   }
 
   function startWave() {
     if (state.inWave) return;
     const w = waveFor(state.waveIndex);
-    state.spawnQueue = Array.from({ length: w.count }, () => ({ hp: w.hp, speed: w.speed }));
+    // Base queue all normals
+    state.spawnQueue = Array.from({ length: w.count }, () => ({ hp: w.hp, speed: w.speed, type: "normal" }));
+    // Inject some armored units on later waves
+    if (state.waveIndex >= 1) {
+      const armoredN = Math.max(2, Math.floor(w.count * 0.2));
+      for (let i = 0; i < armoredN && i < state.spawnQueue.length; i++) {
+        // Spread armored through the wave (every ~Nth)
+        const idx = Math.floor((i + 1) * (state.spawnQueue.length / (armoredN + 1)));
+        const base = state.spawnQueue[idx] || state.spawnQueue[state.spawnQueue.length - 1];
+        state.spawnQueue[idx] = { hp: Math.round(base.hp * 2.4), speed: Math.max(50, Math.round(base.speed * 0.85)), type: "armored" };
+      }
+    }
     state.spawnInterval = w.gap;
     state.spawnElapsed = 0;
     state.inWave = true;
@@ -486,7 +532,7 @@
     const speed = stats.projectileSpeed;
     const kind = (tower.type === "bomber") ? "explosive" : "normal";
     const splash = stats.splash || 0;
-    state.projectiles.push({ x: origin.x, y: origin.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, speed, dmg: stats.damage, target, kind, splash });
+    state.projectiles.push({ x: origin.x, y: origin.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, speed, dmg: stats.damage, target, kind, splash, sourceType: tower.type });
   }
 
   // Update loop
@@ -499,7 +545,7 @@
       while (state.spawnQueue.length > 0 && state.spawnElapsed >= interval) {
         state.spawnElapsed -= interval;
         const next = state.spawnQueue.shift();
-        spawnEnemy(next.hp, next.speed);
+        spawnEnemy(next.hp, next.speed, next.type || "normal");
       }
       if (state.spawnQueue.length === 0 && state.enemies.every(e => !e.alive)) {
         // wave completed
@@ -558,10 +604,10 @@
         const d = Math.hypot(dx, dy);
         if (d <= 10) {
           // impact
-          tgt.hp -= p.dmg;
+          tgt.hp -= damageAfterArmor(p.dmg, p.sourceType || "basic", tgt);
           p.dead = true;
           if (p.kind === "explosive") {
-            explodeAt(tp.x, tp.y, Math.round(p.dmg * 0.6), p.splash, tgt);
+            explodeAt(tp.x, tp.y, Math.round(p.dmg * 0.6), p.splash, tgt, p.sourceType || "bomber");
           }
           if (tgt.hp <= 0) {
             tgt.alive = false;
