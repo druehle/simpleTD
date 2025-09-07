@@ -10,10 +10,13 @@
     <div class="wrap">
       <header class="header">
         <h1>Geometry TD</h1>
-        <div class="hud">
-          <div class="stat"><span>Money</span><strong id="money">0</strong></div>
-          <div class="stat"><span>Lives</span><strong id="lives">0</strong></div>
-          <div class="stat"><span>Wave</span><strong id="wave">0</strong></div>
+        <div class="header-right">
+          <div class="hud">
+            <div class="stat"><span>Money</span><strong id="money">0</strong></div>
+            <div class="stat"><span>Lives</span><strong id="lives">0</strong></div>
+            <div class="stat"><span>Wave</span><strong id="wave">0</strong></div>
+          </div>
+          <button id="upgrade-tower" class="btn upgrade" disabled>Upgrade (Cost <span id="upgrade-cost">-</span>)</button>
         </div>
       </header>
 
@@ -28,7 +31,7 @@
       </div>
 
       <div class="canvas-wrap">
-        <canvas id="game" width="960" height="540"></canvas>
+        <canvas id="game" width="960" height="290"></canvas>
       </div>
 
       <div id="upgrade-panel" class="panel">
@@ -39,7 +42,6 @@
           <div><span class="label">Rate</span><span id="tower-rate">-</span></div>
           <div><span class="label">Range</span><span id="tower-range">-</span></div>
         </div>
-        <button id="upgrade-tower" class="btn upgrade" disabled>Upgrade (Cost <span id="upgrade-cost">-</span>)</button>
       </div>
 
       <footer class="footer">

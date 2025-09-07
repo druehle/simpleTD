@@ -4,7 +4,7 @@
 (function () {
   // Canvas setup
   const CANVAS_W = 960;
-  const CANVAS_H = 540;
+  const CANVAS_H = 290; // reduced play field height by 250px
 
   // UI elements
   const moneyEl = document.getElementById("money");
@@ -119,7 +119,7 @@
   }
 
   function createDefaultPath() {
-    // Snake-like path: back-and-forth horizontal runs with two loops
+    // Snake-like path with dynamic lanes to fit current height
     const P = [];
     const top = 80;
     const bottom = CANVAS_H - 80;
@@ -127,19 +127,21 @@
     const rightOut = CANVAS_W + 80;
     const left = 80;
     const right = CANVAS_W - 80;
+    const span = Math.max(60, bottom - top);
+    const lane = Math.min(120, Math.max(40, Math.floor(span / 3)));
 
     // Enter from left
     P.push({ x: leftOut, y: top });
     // First run to right
     P.push({ x: right, y: top });
     // Down a lane
-    P.push({ x: right, y: top + 120 });
+    P.push({ x: right, y: top + lane });
     // Back to left (loop 1)
-    P.push({ x: left, y: top + 120 });
+    P.push({ x: left, y: top + lane });
     // Down again
-    P.push({ x: left, y: top + 240 });
+    P.push({ x: left, y: top + lane * 2 });
     // To right (loop 2)
-    P.push({ x: right, y: top + 240 });
+    P.push({ x: right, y: top + lane * 2 });
     // Down near bottom
     P.push({ x: right, y: bottom });
     // Exit to right
