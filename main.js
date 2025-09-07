@@ -333,8 +333,9 @@
       if (!e.alive) continue;
       const p = state.path.posAt(e.s);
       // body shape
-      if (e.shape === "oct") {
-        drawPolygon(p.x, p.y, e.r, 8, e.color, "#0a0c12", 2);
+      const sides = e.sides || (e.shape === "oct" ? 8 : 6);
+      if (sides && sides >= 3) {
+        drawPolygon(p.x, p.y, e.r, sides, e.color, "#0a0c12", 2);
       } else {
         drawHex(p.x, p.y, e.r, e.color, "#0a0c12", 2);
       }
@@ -393,7 +394,7 @@
       const d = Math.hypot(ep.x - x, ep.y - y);
       if (d <= radius) {
         e.hp -= damageAfterArmor(splashDmg, sourceType, e);
-        if (e.hp <= 0) { e.alive = false; state.money += 5; updateHUD(); }
+        if (e.hp <= 0) { onEnemyKilled(e); }
       }
     }
   }
@@ -609,13 +610,29 @@
   function spawnEnemy(hp, speed, type = "normal") {
     if (type === "armored") {
       // Armored octagon: tougher, slightly larger, resists basic shots
-      state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 16, alive: true, color: "#94a3b8", shape: "oct", armorBasicMul: 0.4 });
+      state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 16, alive: true, color: "#94a3b8", shape: "oct", sides: 8, armorBasicMul: 0.4, spawnId: nextEnemyId++ });
     } else if (type === "boss") {
       // Boss: gold, large, slow-ish, big HP, big reward
-      state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 22, alive: true, color: "#ffd700", shape: "hex", boss: true });
+      state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 22, alive: true, color: "#ffd700", shape: "hex", sides: 6, boss: true, spawnId: nextEnemyId++ });
     } else {
       const color = colorForHardness(hp);
-      state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 14, alive: true, color, shape: "hex" });
+      state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 14, alive: true, color, shape: "hex", sides: 6, spawnId: nextEnemyId++ });
+    }
+  }
+
+  function onEnemyKilled(enemy) {
+    if (!enemy.alive) return;
+    enemy.alive = false;
+    giveKillReward(enemy);
+    const sides = enemy.sides || (enemy.shape === "oct" ? 8 : 6);
+    if (sides && sides > 3) {
+      const childSides = sides - 1;
+      const childHp = Math.max(1, Math.round(enemy.maxHp * 0.6));
+      const childR = enemy.r;
+      for (let i = 0; i < 2; i++) {
+        const color = colorForHardness(childHp);
+        state.enemies.push({ s: enemy.s, hp: childHp, maxHp: childHp, speed: enemy.speed, r: childR, alive: true, color, shape: "poly", sides: childSides, spawnId: nextEnemyId++ });
+      }
     }
   }
 
@@ -827,7 +844,7 @@
             const dline = pointSegDist(ep.x, ep.y, t.x, t.y, endX, endY);
             if (dline <= thickness + (e.r || 0)) {
               e.hp -= damageAfterArmor(stats.damage * dt, "laser", e);
-              if (e.hp <= 0) { e.alive = false; giveKillReward(e); }
+              if (e.hp <= 0) { onEnemyKilled(e); }
             }
           }
         }
@@ -858,10 +875,7 @@
           if (p.kind === "explosive") {
             explodeAt(tp.x, tp.y, Math.round(p.dmg * 0.6), p.splash, tgt, p.sourceType || "bomber");
           }
-          if (tgt.hp <= 0) {
-            tgt.alive = false;
-            giveKillReward(tgt);
-          }
+          if (tgt.hp <= 0) { onEnemyKilled(tgt); }
         } else {
           const v = p.speed || 420;
           const ux = dx / (d || 1), uy = dy / (d || 1);
