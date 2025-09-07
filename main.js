@@ -781,12 +781,12 @@
           // record beam for drawing (to canvas edge)
           state.laserBeams.push({ x1: t.x, y1: t.y, x2: endX, y2: endY, color: "#fecaca" });
           // damage any enemy the beam intersects
-          const thickness = 6; // px half-width considered as hit
+          const thickness = 6; // base beam half-width
           for (const e of state.enemies) {
             if (!e.alive) continue;
             const ep = state.path.posAt(e.s);
             const dline = pointSegDist(ep.x, ep.y, t.x, t.y, endX, endY);
-            if (dline <= thickness) {
+            if (dline <= thickness + (e.r || 0)) {
               e.hp -= damageAfterArmor(stats.damage * dt, "laser", e);
               if (e.hp <= 0) { e.alive = false; giveKillReward(e); }
             }
