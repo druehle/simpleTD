@@ -190,32 +190,88 @@
   }
 
   function createDefaultPath() {
-    // Random meandering path between left and right edges
-    const P = [];
-    const marginX = 80, marginY = 70;
+    // Four preset zig-zag maps; choose one at random each game/reset
+    const margin = 70;
     const leftOut = -80;
     const rightOut = CANVAS_W + 80;
-    const left = marginX;
-    const right = CANVAS_W - marginX;
-    let y = randInt(marginY, CANVAS_H - marginY);
-    P.push({ x: leftOut, y });
-    let dir = 1; // 1 -> to right, -1 -> to left
-    const lanes = Math.max(3, Math.min(8, Math.round(CANVAS_H / 80)));
-    for (let i = 0; i < lanes; i++) {
-      const xSide = dir > 0 ? right : left;
-      P.push({ x: xSide, y });
-      if (i < lanes - 1) {
-        let step = randInt(80, 140) * (Math.random() < 0.5 ? -1 : 1);
-        let ny = y + step;
-        if (ny < marginY) ny = marginY;
-        if (ny > CANVAS_H - marginY) ny = CANVAS_H - marginY;
-        P.push({ x: xSide, y: ny });
-        y = ny;
+    const left = margin;
+    const right = CANVAS_W - margin;
+    const top = margin;
+    const bottom = CANVAS_H - margin;
+
+    function mapA() {
+      // Classic horizontal snake with 3 lanes
+      const P = [];
+      const lane = Math.max(60, Math.min(140, Math.floor((bottom - top) / 3)));
+      P.push({ x: leftOut, y: top });
+      P.push({ x: right, y: top });
+      P.push({ x: right, y: top + lane });
+      P.push({ x: left, y: top + lane });
+      P.push({ x: left, y: top + lane * 2 });
+      P.push({ x: right, y: top + lane * 2 });
+      P.push({ x: right, y: bottom });
+      P.push({ x: rightOut, y: bottom });
+      return P;
+    }
+
+    function mapB() {
+      // Start higher, more lanes and tighter zig-zag
+      const P = [];
+      const lanes = 4;
+      const step = Math.max(50, Math.floor((bottom - top) / (lanes + 1)));
+      let y = top + Math.floor(step / 2);
+      P.push({ x: leftOut, y });
+      let dir = 1;
+      for (let i = 0; i < lanes; i++) {
+        const xSide = dir > 0 ? right : left;
+        P.push({ x: xSide, y });
+        y += step;
+        P.push({ x: xSide, y });
         dir *= -1;
       }
+      P.push({ x: right, y });
+      P.push({ x: rightOut, y });
+      return P;
     }
-    P.push({ x: rightOut, y });
-    return new Path(P);
+
+    function mapC() {
+      // Long first run, then short tight zig
+      const P = [];
+      const midY = Math.floor((top + bottom) / 2);
+      const tight = 60;
+      P.push({ x: leftOut, y: midY });
+      P.push({ x: right, y: midY });
+      P.push({ x: right, y: midY + tight });
+      P.push({ x: left, y: midY + tight });
+      P.push({ x: left, y: midY + tight * 2 });
+      P.push({ x: right, y: midY + tight * 2 });
+      P.push({ x: rightOut, y: midY + tight * 2 });
+      return P;
+    }
+
+    function mapD() {
+      // Start low, climb up with zig-zags
+      const P = [];
+      const lanes = 3;
+      const step = Math.max(60, Math.floor((bottom - top) / (lanes + 1)));
+      let y = bottom - Math.floor(step / 2);
+      P.push({ x: leftOut, y });
+      let dir = 1;
+      for (let i = 0; i < lanes; i++) {
+        const xSide = dir > 0 ? right : left;
+        P.push({ x: xSide, y });
+        y -= step;
+        P.push({ x: xSide, y });
+        dir *= -1;
+      }
+      P.push({ x: right, y });
+      P.push({ x: rightOut, y });
+      return P;
+    }
+
+    const choices = [mapA, mapB, mapC, mapD];
+    const idx = Math.floor(Math.random() * choices.length);
+    return new Path(choices[idx]());
   }
 
   // --- Hex helpers ---
