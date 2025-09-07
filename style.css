@@ -27,10 +27,33 @@ body {
 }
 .header, .controls { position: relative; z-index: 2; }
 .header h1 { margin: 0; font-size: 20px; letter-spacing: 0.5px; color: var(--text); }
-.header-right { display: flex; align-items: center; gap: 10px; }
+.header-right {
+  display: grid;
+  grid-template-columns: minmax(260px,1fr) minmax(260px,1fr) auto;
+  gap: 10px;
+  align-items: stretch;
+}
 
-.hud { display: flex; gap: 16px; background: var(--panel); border: 1px solid #202737; padding: 8px 10px; border-radius: 8px; }
-.stat { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.hud {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(90px, 1fr));
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid #202737;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.stat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--muted);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid #202737;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
 .stat strong { color: var(--text); font-weight: 700; }
 
 .controls { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin: 6px 0 8px; }
@@ -57,6 +80,20 @@ body {
 }
 .canvas-wrap { position: relative; z-index: 1; }
 
+/* Modal */
+.modal { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,0.6); z-index: 10; }
+.modal.hidden { display: none; }
+.modal-content {
+  background: var(--panel);
+  border: 1px solid #202737;
+  padding: 16px 18px;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  text-align: center;
+}
+.modal-content h2 { margin: 0 0 8px; }
+.modal-content p { margin: 0 0 12px; color: var(--muted); }
+
 canvas { display: block; width: 100%; height: auto; background: #0b0e14; border-radius: 6px; }
 
 .footer { color: var(--muted); margin-top: 12px; text-align: center; }
@@ -66,6 +103,10 @@ canvas { display: block; width: 100%; height: auto; background: #0b0e14; border-
   margin: 0;
   display: grid;
   gap: 8px;
+  background: var(--panel);
+  border: 1px solid #202737;
+  padding: 8px 10px;
+  border-radius: 8px;
 }
 .panel {
   background: var(--panel); border: 1px solid #202737; padding: 10px; border-radius: 8px;
@@ -74,4 +115,8 @@ canvas { display: block; width: 100%; height: auto; background: #0b0e14; border-
   display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px;
 }
 #upgrade-panel .label { color: var(--muted); display: block; }
-.btn.upgrade { border-color: var(--accent); color: var(--accent); }
+.btn.upgrade { border-color: var(--accent); color: var(--accent); align-self: center; white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .header-right { grid-template-columns: 1fr; }
+}

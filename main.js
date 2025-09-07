@@ -16,6 +16,9 @@
   const btnBasic = document.getElementById("select-basic");
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
+  // Modal elements
+  const modalGameOver = document.getElementById("gameover-modal");
+  const btnNewGame = document.getElementById("btn-newgame");
 
   // Upgrade panel
   const upPanel = document.getElementById("upgrade-panel");
@@ -299,6 +302,14 @@
       } else {
         drawHex(p.x, p.y, e.r, e.color, "#0a0c12", 2);
       }
+      // boss accent ring
+      if (e.boss) {
+        ctx.strokeStyle = "#ffd700";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, e.r + 6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       // HP text centered on unit
       ctx.font = "12px system-ui, sans-serif";
       ctx.textAlign = "center";
@@ -479,10 +490,25 @@
     if (type === "armored") {
       // Armored octagon: tougher, slightly larger, resists basic shots
       state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 16, alive: true, color: "#94a3b8", shape: "oct", armorBasicMul: 0.4 });
+    } else if (type === "boss") {
+      // Boss: gold, large, slow-ish, big HP, big reward
+      state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 22, alive: true, color: "#ffd700", shape: "hex", boss: true });
     } else {
       const color = colorForHardness(hp);
       state.enemies.push({ s: 0, hp, maxHp: hp, speed, r: 14, alive: true, color, shape: "hex" });
     }
+  }
+
+  function killReward(enemy) {
+    if (enemy.boss) return 500;
+    // Scale with difficulty (HP proxy)
+    return Math.max(5, Math.round(enemy.maxHp * 0.08));
+  }
+
+  function giveKillReward(enemy) {
+    const r = killReward(enemy);
+    state.money += r;
+    updateHUD();
   }
 
   function startWave() {
@@ -500,12 +526,53 @@
         state.spawnQueue[idx] = { hp: Math.round(base.hp * 2.4), speed: Math.max(50, Math.round(base.speed * 0.85)), type: "armored" };
       }
     }
+    // Add one boss at the end of the wave
+    const bossHp = Math.round(w.hp * 10); // very tanky
+    const bossSpeed = Math.max(45, Math.round(w.speed * 0.8));
+    state.spawnQueue.push({ hp: bossHp, speed: bossSpeed, type: "boss" });
     state.spawnInterval = w.gap;
     state.spawnElapsed = 0;
     state.inWave = true;
     btnStart.disabled = true;
     state.nextWaveTimer = 0;
     state.overlay.visible = false;
+  }
+
+  function showGameOver() {
+    if (modalGameOver) modalGameOver.classList.remove("hidden");
+  }
+
+  function hideGameOver() {
+    if (modalGameOver) modalGameOver.classList.add("hidden");
+  }
+
+  function resetGame() {
+    // Reset core state
+    state.money = 120;
+    state.lives = 20;
+    state.waveIndex = 0;
+    state.inWave = false;
+    state.time = 0;
+    state.lastTs = 0;
+    state.towers = [];
+    state.enemies = [];
+    state.projectiles = [];
+    state.particles = [];
+    state.spawnQueue = [];
+    state.spawnInterval = 0;
+    state.spawnElapsed = 0;
+    state.selectedTool = "none";
+    state.selectedTowerId = null;
+    state.drag = { active: false, type: null, overCanvas: false };
+    state.overlay.visible = false;
+    state.nextWaveTimer = 0;
+    btnStart.disabled = false;
+    // Rebuild path in case dimensions changed
+    state.path = createDefaultPath();
+    updateHUD();
+    hideGameOver();
+    // Kick loop again if it stopped
+    requestAnimationFrame(loop);
   }
 
   // Tower targeting: prefer enemy furthest along within range
@@ -578,6 +645,9 @@
         e.alive = false;
         state.lives--;
         updateHUD();
+        if (state.lives <= 0) {
+          showGameOver();
+        }
       }
     }
     state.enemies = state.enemies.filter(e => e.alive || e.s < state.path.length + 40);
@@ -611,8 +681,7 @@
           }
           if (tgt.hp <= 0) {
             tgt.alive = false;
-            state.money += 5;
-            updateHUD();
+            giveKillReward(tgt);
           }
         } else {
           const v = p.speed || 420;
@@ -762,6 +831,8 @@
         state.turbo = !!turboCb.checked;
       });
     }
+    // New game button
+    if (btnNewGame) btnNewGame.addEventListener("click", resetGame);
     // Drag-to-place from top button
     const beginDrag = (clientX, clientY) => {
       state.drag.active = true;
