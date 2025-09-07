@@ -470,22 +470,40 @@
     for (const t of state.towers) {
       const s = towerStats(t);
       const cfg = getTowerCfg(t.type);
+      const maxed = t.level >= MAX_LEVEL;
+      function pastelFor(type) {
+        if (type === "bomber") return "#fdba74"; // orange-300
+        if (type === "laser") return "#fca5a5";  // red-300
+        return "#93c5fd"; // blue-300 for basic
+      }
+      const bodyColor = maxed ? pastelFor(t.type) : cfg.color;
       const selected = (t.id === state.selectedTowerId);
       ctx.save();
       // subtle range disc
       ctx.globalAlpha = 0.07;
-      ctx.beginPath(); ctx.arc(t.x, t.y, s.range, 0, Math.PI * 2); ctx.fillStyle = cfg.color; ctx.fill();
+      ctx.beginPath(); ctx.arc(t.x, t.y, s.range, 0, Math.PI * 2); ctx.fillStyle = bodyColor; ctx.fill();
       ctx.globalAlpha = 1;
       // body
       if (t.type === "laser") {
-        drawPolygon(t.x, t.y, 16, 3, cfg.color, "#0a0c12", 2, -Math.PI/2);
+        drawPolygon(t.x, t.y, 16, 3, bodyColor, "#0a0c12", 2, -Math.PI/2);
       } else {
-        drawSquare(t.x, t.y, 24, cfg.color);
+        drawSquare(t.x, t.y, 24, bodyColor);
       }
       // level pips
-      ctx.fillStyle = "#a0b8ff";
-      for (let i = 0; i < t.level; i++) {
-        ctx.beginPath(); ctx.arc(t.x - 10 + i * 5, t.y + 12, 2, 0, Math.PI * 2); ctx.fill();
+      if (!maxed) {
+        ctx.fillStyle = "#a0b8ff";
+        for (let i = 0; i < t.level; i++) {
+          ctx.beginPath(); ctx.arc(t.x - 10 + i * 5, t.y + 12, 2, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      // maxed marker: draw an X
+      if (maxed) {
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(t.x - 10, t.y - 10); ctx.lineTo(t.x + 10, t.y + 10);
+        ctx.moveTo(t.x + 10, t.y - 10); ctx.lineTo(t.x - 10, t.y + 10);
+        ctx.stroke();
       }
       // selection ring
       if (selected) {
