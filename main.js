@@ -542,6 +542,7 @@
     }
     return out;
   }
+  let nextEnemyId = 1;
   function spawnEnemy(hp, speed, type = "normal") {
     if (type === "armored") {
       // Armored octagon: tougher, slightly larger, resists basic shots
@@ -617,6 +618,7 @@
     state.spawnQueue = [];
     state.spawnInterval = 0;
     state.spawnElapsed = 0;
+    nextEnemyId = 1;
     state.selectedTool = "none";
     state.selectedTowerId = null;
     state.drag = { active: false, type: null, overCanvas: false };
@@ -642,6 +644,23 @@
       const d = Math.hypot(tower.x - p.x, tower.y - p.y);
       if (d <= s.range && e.s > bestS) {
         best = e; bestS = e.s;
+      }
+    }
+    return best;
+  }
+
+  // For lasers: first enemy spawned that is within range
+  function acquireFirstSpawned(tower) {
+    let best = null;
+    let bestSpawn = Infinity;
+    const s = towerStats(tower);
+    for (const e of state.enemies) {
+      if (!e.alive) continue;
+      const p = state.path.posAt(e.s);
+      const d = Math.hypot(tower.x - p.x, tower.y - p.y);
+      if (d <= s.range) {
+        const sid = (e.spawnId != null) ? e.spawnId : Infinity;
+        if (sid < bestSpawn) { bestSpawn = sid; best = e; }
       }
     }
     return best;
@@ -720,7 +739,7 @@
       const stats = towerStats(t);
       if (t.type === "laser") {
         // Continuous DPS along a beam line toward the farthest target in range
-        const target = acquireTarget(t);
+        const target = acquireFirstSpawned(t);
         if (target) {
           const tp = state.path.posAt(target.s);
           const dx = tp.x - t.x, dy = tp.y - t.y;
