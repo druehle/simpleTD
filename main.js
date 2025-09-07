@@ -726,8 +726,8 @@
           const dx = tp.x - t.x, dy = tp.y - t.y;
           const dist = Math.hypot(dx, dy) || 1;
           const ux = dx / dist, uy = dy / dist;
-          const endX = t.x + ux * stats.range;
-          const endY = t.y + uy * stats.range;
+          const endX = t.x + ux * (stats.range * 2);
+          const endY = t.y + uy * (stats.range * 2);
           // record beam for drawing (full range)
           state.laserBeams.push({ x1: t.x, y1: t.y, x2: endX, y2: endY, color: "#fecaca" });
           // damage any enemy the beam intersects
