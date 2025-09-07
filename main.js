@@ -103,6 +103,8 @@
       rate: cfg.baseRate + (cfg.perLevel.rate || 0) * (lvl - 1),
       projectileSpeed: cfg.projectileSpeed,
     };
+    // Laser towers have double effective range
+    if (t.type === "laser") s.range *= 2;
     s.splash = (cfg.baseSplash || 0) + ((cfg.perLevel.splash || 0) * (lvl - 1));
     return s;
   }
@@ -781,16 +783,29 @@
     for (const t of state.towers) {
       const stats = towerStats(t);
       if (t.type === "laser") {
-        // Original laser behavior: lock farthest-in-range target, deal DPS to that target,
-        // and draw beam directly to the target position.
+        // Lock farthest-in-range target, draw beam out to 2x original range (stats.range already doubled),
+        // and damage any enemy the beam intersects.
         const target = acquireTarget(t);
         if (target) {
           const tp = state.path.posAt(target.s);
-          // record beam for drawing (to target)
-          state.laserBeams.push({ x1: t.x, y1: t.y, x2: tp.x, y2: tp.y, color: "#fecaca" });
-          // apply DPS to target only
-          target.hp -= damageAfterArmor(stats.damage * dt, "laser", target);
-          if (target.hp <= 0) { target.alive = false; giveKillReward(target); }
+          const dx = tp.x - t.x, dy = tp.y - t.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const ux = dx / dist, uy = dy / dist;
+          const endX = t.x + ux * (stats.range);
+          const endY = t.y + uy * (stats.range);
+          // record beam for drawing
+          state.laserBeams.push({ x1: t.x, y1: t.y, x2: endX, y2: endY, color: "#fecaca" });
+          // damage along beam
+          const thickness = 10;
+          for (const e of state.enemies) {
+            if (!e.alive) continue;
+            const ep = state.path.posAt(e.s);
+            const dline = pointSegDist(ep.x, ep.y, t.x, t.y, endX, endY);
+            if (dline <= thickness + (e.r || 0)) {
+              e.hp -= damageAfterArmor(stats.damage * dt, "laser", e);
+              if (e.hp <= 0) { e.alive = false; giveKillReward(e); }
+            }
+          }
         }
         continue;
       }
