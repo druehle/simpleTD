@@ -788,9 +788,9 @@
           const dx = tp.x - t.x, dy = tp.y - t.y;
           const dist = Math.hypot(dx, dy) || 1;
           const ux = dx / dist, uy = dy / dist;
-          const edge = rayToCanvasEdge(t.x, t.y, ux, uy);
-          const endX = edge.x, endY = edge.y;
-          // record beam for drawing (to canvas edge)
+          const endX = t.x + ux * (stats.range * 2);
+          const endY = t.y + uy * (stats.range * 2);
+          // record beam for drawing (2x range)
           state.laserBeams.push({ x1: t.x, y1: t.y, x2: endX, y2: endY, color: "#fecaca" });
           // damage any enemy the beam intersects
           const thickness = 10; // base beam half-width (visual thickness aligned)
