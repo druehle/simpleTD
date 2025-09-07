@@ -185,7 +185,7 @@
   }
 
   function createDefaultPath() {
-    // Snake-like path with dynamic lanes to fit current height
+    // Classic snake path (fixed lanes), as used previously
     const P = [];
     const top = 80;
     const bottom = CANVAS_H - 80;
@@ -193,21 +193,19 @@
     const rightOut = CANVAS_W + 80;
     const left = 80;
     const right = CANVAS_W - 80;
-    const span = Math.max(60, bottom - top);
-    const lane = Math.min(120, Math.max(40, Math.floor(span / 3)));
 
     // Enter from left
     P.push({ x: leftOut, y: top });
     // First run to right
     P.push({ x: right, y: top });
-    // Down a lane
-    P.push({ x: right, y: top + lane });
+    // Down a lane (120px)
+    P.push({ x: right, y: top + 120 });
     // Back to left (loop 1)
-    P.push({ x: left, y: top + lane });
-    // Down again
-    P.push({ x: left, y: top + lane * 2 });
+    P.push({ x: left, y: top + 120 });
+    // Down again (240px)
+    P.push({ x: left, y: top + 240 });
     // To right (loop 2)
-    P.push({ x: right, y: top + lane * 2 });
+    P.push({ x: right, y: top + 240 });
     // Down near bottom
     P.push({ x: right, y: bottom });
     // Exit to right
