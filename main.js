@@ -302,14 +302,6 @@
       } else {
         drawHex(p.x, p.y, e.r, e.color, "#0a0c12", 2);
       }
-      // boss accent ring
-      if (e.boss) {
-        ctx.strokeStyle = "#ffd700";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, e.r + 6, 0, Math.PI * 2);
-        ctx.stroke();
-      }
       // HP text centered on unit
       ctx.font = "12px system-ui, sans-serif";
       ctx.textAlign = "center";
@@ -708,6 +700,11 @@
         state.nextWaveTimer -= dt;
         if (state.nextWaveTimer <= 0) startWave();
       }
+    }
+
+    // Ensure game over modal appears when lives are depleted
+    if (state.lives <= 0) {
+      showGameOver();
     }
   }
 
